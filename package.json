@@ -1,0 +1,27 @@
+{
+  "name": "pulse-notification-system",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devanshjaincampaign-tech/pulse-notification-engine.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/devanshjaincampaign-tech/pulse-notification-engine/issues"
+  },
+  "homepage": "https://github.com/devanshjaincampaign-tech/pulse-notification-engine#readme",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "pg": "^8.23.0",
+    "redis": "^6.2.1"
+  }
+}
