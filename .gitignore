@@ -1,0 +1,20 @@
+# Secrets — never commit real environment values
+.env
+
+# Dependencies — regenerated from package.json, huge, don't track
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+
+# Docker volumes if ever mounted locally
+pgdata/
