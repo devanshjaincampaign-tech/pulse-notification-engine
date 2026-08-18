@@ -18,3 +18,5 @@ Thumbs.db
 
 # Docker volumes if ever mounted locally
 pgdata/
+
+NOTES.md
