@@ -35,7 +35,7 @@ if(missing.length>0){
 
 export const env={
     nodeEnv: process.env.NODE_ENV || 'development',
-    port: Number(process.env.port),
+    port: Number(process.env.PORT),
 
     db: {
         user: process.env.DB_USER,
