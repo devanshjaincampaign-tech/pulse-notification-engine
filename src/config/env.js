@@ -21,6 +21,7 @@ const requiredVars=[
     'DB_PORT',
     'REDIS_HOST',
     'REDIS_PORT',
+    'JWT_SECRET',
 ];
 
 const missing = requiredVars.filter((key) => !process.env[key]);
@@ -36,6 +37,7 @@ if(missing.length>0){
 export const env={
     nodeEnv: process.env.NODE_ENV || 'development',
     port: Number(process.env.PORT),
+    jwtSecret: process.env.JWT_SECRET,
 
     db: {
         user: process.env.DB_USER,
