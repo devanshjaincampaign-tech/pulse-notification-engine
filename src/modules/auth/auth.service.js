@@ -29,6 +29,8 @@ export async function login({email,password}){
         throw new Error('Invalid email or password');
     }
 
+    const token = signToken({ userId: user.id });
+
     return {
         user:{
             id: user.id,

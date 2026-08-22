@@ -20,3 +20,7 @@ export async function loginController(req,res){
         res.status(401).json({error :err.message})
     }
 }
+
+export function meController(req,res){
+    res.status(200).json({userId: req.user.userId});
+}
