@@ -49,3 +49,14 @@ export async function deleteNotification(notificationId, recipientId) {
     [notificationId, recipientId]
   );
 }
+
+export async function createNotification({ eventId, recipientId, actorId, type, title, message, metadata }) {
+  const { rows } = await pool.query(
+    `INSERT INTO notifications (event_id, recipient_id, actor_id, type, title, message, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id, event_id, recipient_id, actor_id, type, title, message, metadata, is_read, created_at`,
+    [eventId, recipientId, actorId, type, title, message, metadata]
+  );
+
+  return rows[0];
+}

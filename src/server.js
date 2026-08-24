@@ -2,6 +2,7 @@ import { env } from "./config/env.js";
 import { testConnection } from "./config/database.js";
 import { connectRedis } from "./config/redis.js";
 import { eventBus } from './events/eventBus.js';
+import { registerNotificationConsumers } from './events/consumers/notification.consumer.js';
 import app from './app.js';
 
 eventBus.on('POST_LIKED', (event) => {
@@ -11,6 +12,7 @@ eventBus.on('POST_LIKED', (event) => {
 async function startServer(){
     await testConnection();
     await connectRedis();
+    registerNotificationConsumers();
 
     app.listen(env.port,()=>{
         console.log(`server running on port ${env.port}`);

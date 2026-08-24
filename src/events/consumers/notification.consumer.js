@@ -1,0 +1,23 @@
+import { eventBus } from '../eventBus.js';
+import { EVENT_TYPES } from '../eventTypes.js';
+import { buildPostLikedNotification } from '../handlers/postLiked.handler.js';
+import { createNotification } from '../../modules/notifications/notification.repository.js';
+
+async function handlePostLiked(event) {
+  const notificationData = buildPostLikedNotification(event);
+
+  try {
+    await createNotification(notificationData);
+    console.log(`Notification created for event ${event.eventId}`);
+  } catch (err) {
+    if (err.code === '23505') {
+      console.log(`Duplicate event ${event.eventId} — already processed, skipping`);
+    } else {
+      console.error('Failed to create notification:', err);
+    }
+  }
+}
+
+export function registerNotificationConsumers() {
+  eventBus.on(EVENT_TYPES.POST_LIKED, handlePostLiked);
+}
