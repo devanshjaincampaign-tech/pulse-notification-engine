@@ -7,7 +7,7 @@ if (!token) {
   process.exit(1);
 }
 
-const socket = io('http://localhost:3000', {
+const socket = io('http://localhost:3001', {
   auth: { token },
 });
 

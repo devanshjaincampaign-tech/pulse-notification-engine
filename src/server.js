@@ -18,7 +18,7 @@ async function startServer(){
     registerNotificationConsumers();
 
     const httpServer = http.createServer(app);
-initializeWebSocket(httpServer);
+await initializeWebSocket(httpServer);
 
 httpServer.listen(env.port, () => {
   console.log(`server running on port ${env.port}`);

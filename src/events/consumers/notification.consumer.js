@@ -11,7 +11,7 @@ async function handlePostLiked(event) {
     const notification = await createNotification(notificationData);
     console.log(`Notification created for event ${event.eventId}`);
 
-    emitToUser(notification.recipient_id, 'notification', notification);
+    await emitToUser(notification.recipient_id, 'notification', notification);
   } catch (err) {
     if (err.code === '23505') {
       console.log(`Duplicate event ${event.eventId} — already processed, skipping`);

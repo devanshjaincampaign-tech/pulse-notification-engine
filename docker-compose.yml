@@ -12,6 +12,19 @@ services:
       redis:
         condition: service_healthy
 
+  app2:
+    build: .
+    env_file: .env
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   postgres:
     image: postgres:16
     environment:
