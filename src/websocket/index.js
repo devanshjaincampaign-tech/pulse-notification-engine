@@ -1,12 +1,15 @@
 import {Server} from 'socket.io';
 import { socketAuthMiddleware } from './socketAuth.js';
+import { setIoInstance } from './socketEmitter.js';
 
 export function initializeWebSocket(httpServer){
     const io=new Server(httpServer);
+
+    setIoInstance(io);
     io.use(socketAuthMiddleware);
 
     io.on('connection',(socket)=>{
-        const room=`user: ${socket.userId}`;
+        const room=`user:${socket.userId}`;
         socket.join(room);
 
         console.log(`User ${socket.userId} connected, joined room ${room}`);

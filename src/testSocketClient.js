@@ -22,3 +22,7 @@ socket.on('connect_error', (err) => {
 socket.on('disconnect', () => {
   console.log('Disconnected');
 });
+
+socket.on('notification', (data) => {
+  console.log('NEW NOTIFICATION RECEIVED:', data);
+});
