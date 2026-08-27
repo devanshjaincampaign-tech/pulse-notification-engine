@@ -3,8 +3,16 @@ import { EVENT_TYPES } from '../eventTypes.js';
 import { buildPostLikedNotification } from '../handlers/postLiked.handler.js';
 import { createNotification } from '../../modules/notifications/notification.repository.js';
 import { emitToUser } from '../../websocket/socketEmitter.js';
+import { getPreferenceForType } from '../../modules/preferences/preference.repository.js';
 
 async function handlePostLiked(event) {
+  const preference = await getPreferenceForType(event.targetUserId, event.eventType);
+
+  if (preference && !preference.in_app_enabled) {
+    console.log(`User ${event.targetUserId} has disabled in-app notifications for ${event.eventType}, skipping`);
+    return;
+  }
+
   const notificationData = buildPostLikedNotification(event);
 
   try {
