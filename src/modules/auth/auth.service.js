@@ -1,12 +1,13 @@
 import bcrypt from 'bcrypt';
 import {findUserByEmail, createUser} from './auth.repository.js';
 import { signToken } from '../../utils/jwt.js';
+import { ConflictError, UnauthorizedError } from '../../common/errors/index.js';
 
 export async function registerUser({username,email,password}){
     const existingUser= await findUserByEmail(email);
 
     if(existingUser){
-        throw new Error('User with this email already exists');
+        throw new ConflictError('Email already registered');    
     }
 
     const passwordHash= await bcrypt.hash(password,10);
@@ -20,13 +21,13 @@ export async function login({email,password}){
     const user=await findUserByEmail(email);
 
     if(!user){
-        throw new Error('Invalid email or password');
+        throw new UnauthorizedError('Invalid email or password');
     }
 
     const isMatch= await bcrypt.compare(password,user.password_hash);
 
     if(!isMatch){
-        throw new Error('Invalid email or password');
+        throw new UnauthorizedError('Invalid email or password');    
     }
 
     const token = signToken({ userId: user.id });

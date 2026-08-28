@@ -5,6 +5,7 @@ import {
   markAllAsRead,
   deleteNotification,
 } from './notification.repository.js';
+import { NotFoundError } from '../../common/errors/index.js';
 
 export async function listNotifications(recipientId, { limit, offset } = {}) {
   return getNotificationsForUser(recipientId, { limit, offset });
@@ -19,8 +20,7 @@ export async function markNotificationAsRead(notificationId, recipientId) {
   const notification = await markAsRead(notificationId, recipientId);
 
   if (!notification) {
-    throw new Error('Notification not found');
-  }
+    throw new Error('Notification not found');  }
 
   return notification;
 }
