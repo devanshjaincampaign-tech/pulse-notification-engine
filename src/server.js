@@ -7,10 +7,7 @@ import app from './app.js';
 
 import http from 'http';
 import { initializeWebSocket } from './websocket/index.js';
-
-eventBus.on('POST_LIKED', (event) => {
-  console.log('TEST LISTENER received event:', event);
-});
+import { logger } from './config/logger.js';
 
 async function startServer(){
     await testConnection();
@@ -21,8 +18,7 @@ async function startServer(){
 await initializeWebSocket(httpServer);
 
 httpServer.listen(env.port, () => {
-  console.log(`server running on port ${env.port}`);
-});
+  logger.info({ port: env.port }, 'Server started');});
 }
 
 startServer();

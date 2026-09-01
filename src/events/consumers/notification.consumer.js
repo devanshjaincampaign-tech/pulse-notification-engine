@@ -5,12 +5,12 @@ import { createNotification } from '../../modules/notifications/notification.rep
 import { emitToUser } from '../../websocket/socketEmitter.js';
 import { getPreferenceForType } from '../../modules/preferences/preference.repository.js';
 import { retryWithBackoff } from '../../common/utils/retry.js';
-
+import { logger } from '../../config/logger.js';
 async function handlePostLiked(event) {
   const preference = await getPreferenceForType(event.targetUserId, event.eventType);
 
   if (preference && !preference.in_app_enabled) {
-    console.log(`User ${event.targetUserId} has disabled in-app notifications for ${event.eventType}, skipping`);
+    logger.info({ eventId: event.eventId, userId: event.targetUserId, eventType: event.eventType }, 'Notification skipped due to user preference');
     return;
   }
 
@@ -22,13 +22,13 @@ async function handlePostLiked(event) {
       { isRetryable: (err) => err.code !== '23505' }
     );
 
-    console.log(`Notification created for event ${event.eventId}`);
+    logger.info({ eventId: event.eventId, userId: notification.recipient_id, notificationId: notification.id }, 'Notification created');
     await emitToUser(notification.recipient_id, 'notification', notification);
   } catch (err) {
     if (err.code === '23505') {
-      console.log(`Duplicate event ${event.eventId} — already processed, skipping`);
+      logger.warn({ eventId: event.eventId }, 'Duplicate event detected, skipping');
     } else {
-      console.error('Failed to create notification after retries:', err);
+      logger.error({ eventId: event.eventId, err }, 'Failed to create notification after retries');
     }
   }
 }
