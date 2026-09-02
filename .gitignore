@@ -20,3 +20,5 @@ Thumbs.db
 pgdata/
 
 NOTES.md
+
+.env.test
