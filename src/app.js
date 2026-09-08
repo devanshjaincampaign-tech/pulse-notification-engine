@@ -1,4 +1,5 @@
 import express from 'express';
+import { env } from './config/env.js';
 import authRoutes from './modules/auth/auth.route.js';
 import notificationRoutes from './modules/notifications/notification.routes.js';
 import testEventRoutes from './events/producers/testEvent.routes.js';
@@ -28,7 +29,9 @@ app.get('/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/test-events', testEventRoutes);
+if (env.nodeEnv !== 'production') {
+  app.use('/api/test-events', testEventRoutes);
+}
 app.use('/api/preferences', preferenceRoutes);
 
 app.use(errorHandler);
