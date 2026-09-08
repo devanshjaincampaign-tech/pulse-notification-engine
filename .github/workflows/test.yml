@@ -43,19 +43,6 @@ jobs:
 
       - run: npm install
 
-      - name: Run migrations against test database
-        run: node src/db/migrate.js test
-        env:
-          DB_USER: postgres
-          DB_PASSWORD: testpassword
-          DB_NAME: pulse_notifications_test
-          DB_HOST: localhost
-          DB_PORT: 5433
-          PORT: 3000
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          JWT_SECRET: ci_test_secret
-
       - name: Run tests
         run: npm test
         env:

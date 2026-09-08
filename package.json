@@ -7,7 +7,7 @@
     "migrate": "node src/db/migrate.js",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "vitest run",
+    "test": "node src/db/migrate.js test && vitest run",
     "migrate:test": "node src/db/migrate.js test"
   },
   "repository": {
