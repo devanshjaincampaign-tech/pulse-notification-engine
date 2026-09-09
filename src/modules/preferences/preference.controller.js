@@ -1,15 +1,15 @@
 import { listPreferences, updatePreference } from './preference.service.js';
 
-export async function listPreferencesController(req, res) {
+export async function listPreferencesController(req, res, next) {
   try {
     const preferences = await listPreferences(req.user.userId);
     res.status(200).json(preferences);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 }
 
-export async function updatePreferenceController(req, res) {
+export async function updatePreferenceController(req, res, next) {
   try {
     const notificationType = req.params.type;
     const { inAppEnabled, emailEnabled } = req.body;
@@ -21,6 +21,6 @@ export async function updatePreferenceController(req, res) {
 
     res.status(200).json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    next(err);
   }
 }

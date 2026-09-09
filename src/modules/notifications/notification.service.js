@@ -20,7 +20,8 @@ export async function markNotificationAsRead(notificationId, recipientId) {
   const notification = await markAsRead(notificationId, recipientId);
 
   if (!notification) {
-    throw new Error('Notification not found');  }
+    throw new NotFoundError('Notification not found');
+  }
 
   return notification;
 }
