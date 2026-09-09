@@ -7,28 +7,34 @@ import { getPreferenceForType } from '../../modules/preferences/preference.repos
 import { retryWithBackoff } from '../../common/utils/retry.js';
 import { logger } from '../../config/logger.js';
 async function handlePostLiked(event) {
-  const preference = await getPreferenceForType(event.targetUserId, event.eventType);
-
-  if (preference && !preference.in_app_enabled) {
-    logger.info({ eventId: event.eventId, userId: event.targetUserId, eventType: event.eventType }, 'Notification skipped due to user preference');
-    return;
-  }
-
-  const notificationData = buildPostLikedNotification(event);
-
   try {
+    const preference = await getPreferenceForType(event.targetUserId, event.eventType);
+
+    if (preference && !preference.in_app_enabled) {
+      logger.info(
+        { eventId: event.eventId, userId: event.targetUserId, eventType: event.eventType },
+        'Notification skipped due to user preference'
+      );
+      return;
+    }
+
+    const notificationData = buildPostLikedNotification(event);
+
     const notification = await retryWithBackoff(
       () => createNotification(notificationData),
       { isRetryable: (err) => err.code !== '23505' }
     );
 
-    logger.info({ eventId: event.eventId, userId: notification.recipient_id, notificationId: notification.id }, 'Notification created');
+    logger.info(
+      { eventId: event.eventId, userId: notification.recipient_id, notificationId: notification.id },
+      'Notification created'
+    );
     await emitToUser(notification.recipient_id, 'notification', notification);
   } catch (err) {
     if (err.code === '23505') {
       logger.warn({ eventId: event.eventId }, 'Duplicate event detected, skipping');
     } else {
-      logger.error({ eventId: event.eventId, err }, 'Failed to create notification after retries');
+      logger.error({ eventId: event.eventId, err }, 'Failed to process notification event');
     }
   }
 }
