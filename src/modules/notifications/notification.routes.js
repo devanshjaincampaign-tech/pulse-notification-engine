@@ -7,11 +7,17 @@ import {
   markAllAsReadController,
   deleteNotificationController,
 } from './notification.controller.js';
+import { validate } from '../../common/middleware/validate.middleware.js';
+import { listNotificationsQuerySchema, notificationIdParamSchema } from './notification.schema.js';
+
+
 
 const router = Router();
 
 router.use(requireAuth);
-
+router.get('/', validate(listNotificationsQuerySchema, 'query'), listNotificationsController);
+router.patch('/:id/read', validate(notificationIdParamSchema, 'params'), markAsReadController);
+router.delete('/:id', validate(notificationIdParamSchema, 'params'), deleteNotificationController);
 router.get('/', listNotificationsController);
 router.get('/unread-count', getUnreadCountController);
 router.patch('/read-all', markAllAsReadController);

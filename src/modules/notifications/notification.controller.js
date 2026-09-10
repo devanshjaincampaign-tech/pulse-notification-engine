@@ -8,8 +8,7 @@ import {
 
 export async function listNotificationsController(req, res, next) {
   try {
-    const limit = Number(req.query.limit) || 20;
-    const offset = Number(req.query.offset) || 0;
+    const { limit, offset } = req.validated.query;
 
     const notifications = await listNotifications(req.user.userId, { limit, offset });
     res.status(200).json(notifications);
@@ -29,7 +28,7 @@ export async function getUnreadCountController(req, res, next) {
 
 export async function markAsReadController(req, res, next) {
   try {
-    const notificationId = Number(req.params.id);
+    const { id: notificationId } = req.validated.params;
     const result = await markNotificationAsRead(notificationId, req.user.userId);
     res.status(200).json(result);
   } catch (err) {
