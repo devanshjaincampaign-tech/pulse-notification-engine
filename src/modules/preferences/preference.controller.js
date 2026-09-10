@@ -11,8 +11,8 @@ export async function listPreferencesController(req, res, next) {
 
 export async function updatePreferenceController(req, res, next) {
   try {
-    const notificationType = req.params.type;
-    const { inAppEnabled, emailEnabled } = req.body;
+    const { type: notificationType } = req.validated.params;
+    const { inAppEnabled, emailEnabled } = req.validated.body;
 
     const result = await updatePreference(req.user.userId, notificationType, {
       inAppEnabled,

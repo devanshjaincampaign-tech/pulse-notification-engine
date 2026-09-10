@@ -2,7 +2,7 @@ import { registerUser, login} from './auth.service.js';
 
 export async function registerController(req, res, next) {
   try {
-    const { username, email, password } = req.body;
+    const { username, email, password } = req.validated.body;
     const result = await registerUser({ username, email, password });
     res.status(201).json(result);
   } catch (err) {
@@ -10,14 +10,14 @@ export async function registerController(req, res, next) {
   }
 }
 
-export async function loginController(req,res){
-    try{
-        const {email,password} = req.body;
-        const result = await login({email,password});
-        res.status(200).json(result);
-    }catch(err){
-        res.status(401).json({error :err.message})
-    }
+export async function loginController(req, res, next) {
+  try {
+    const { email, password } = req.validated.body;
+    const result = await login({ email, password });
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
 }
 
 export function meController(req,res){
