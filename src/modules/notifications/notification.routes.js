@@ -18,10 +18,7 @@ router.use(requireAuth);
 router.get('/', validate(listNotificationsQuerySchema, 'query'), listNotificationsController);
 router.patch('/:id/read', validate(notificationIdParamSchema, 'params'), markAsReadController);
 router.delete('/:id', validate(notificationIdParamSchema, 'params'), deleteNotificationController);
-router.get('/', listNotificationsController);
 router.get('/unread-count', getUnreadCountController);
 router.patch('/read-all', markAllAsReadController);
-router.patch('/:id/read', markAsReadController);
-router.delete('/:id', deleteNotificationController);
 
 export default router;

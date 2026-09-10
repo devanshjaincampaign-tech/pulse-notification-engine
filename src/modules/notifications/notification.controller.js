@@ -47,7 +47,7 @@ export async function markAllAsReadController(req, res, next) {
 
 export async function deleteNotificationController(req, res, next) {
   try {
-    const notificationId = Number(req.params.id);
+    const { id: notificationId } = req.validated.params;
     const result = await removeNotification(notificationId, req.user.userId);
     res.status(200).json(result);
   } catch (err) {
