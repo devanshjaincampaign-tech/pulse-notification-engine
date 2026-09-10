@@ -73,26 +73,26 @@ instance holding the recipient's socket can emit to the user's room.
 
 ```mermaid
 sequenceDiagram
-    participant Actor as Actor
+    participant A as Actor
     participant API as REST API
     participant Bus as Event Bus
     participant Consumer as Notification Consumer
     participant DB as PostgreSQL
-    participant Redis as Redis Pub/Sub
-    participant WS as Recipient's App Instance
-    participant Recipient as Recipient
+    participant R as Redis Pub Sub
+    participant WS as Recipient App Instance
+    participant User as Recipient
 
-    Actor->>API: Trigger domain action
+    A->>API: Trigger domain action
     API->>Bus: Publish typed event
     Bus->>Consumer: Consume event
     Consumer->>DB: Check notification preferences
     Consumer->>DB: Insert notification with event_id
     DB-->>Consumer: Created row or duplicate constraint error
-    Consumer->>Redis: Publish notification for recipient
-    Redis-->>WS: Deliver message to every app instance
+    Consumer->>R: Publish notification for recipient
+    R-->>WS: Deliver message to every app instance
     WS->>WS: Check local user room
-    WS-->>Recipient: Emit notification event if connected
-    Note over DB,Recipient: If offline, notification remains persisted<br/>for a later REST request
+    WS-->>User: Emit notification event if connected
+    Note over DB,User: If offline, notification remains persisted<br/>for a later REST request
 ```
 
 The notification `event_id` is unique in PostgreSQL. Reprocessing the same
