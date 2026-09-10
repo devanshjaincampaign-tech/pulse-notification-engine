@@ -32,6 +32,11 @@ export async function markAllNotificationsAsRead(recipientId) {
 }
 
 export async function removeNotification(notificationId, recipientId) {
-  await deleteNotification(notificationId, recipientId);
+  const deleted = await deleteNotification(notificationId, recipientId);
+
+  if (!deleted) {
+    throw new NotFoundError('Notification not found');
+  }
+
   return { success: true };
 }

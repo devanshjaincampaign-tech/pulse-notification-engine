@@ -25,7 +25,7 @@ export async function getUnreadCount(recipientId) {
 export async function markAsRead(notificationId, recipientId) {
   const { rows } = await pool.query(
     `UPDATE notifications
-     SET is_read = true, read_at = NOW()
+     SET is_read = true, read_at = COALESCE(read_at, NOW())
      WHERE id = $1 AND recipient_id = $2
      RETURNING id, is_read, read_at`,
     [notificationId, recipientId]
@@ -44,10 +44,12 @@ export async function markAllAsRead(recipientId) {
 }
 
 export async function deleteNotification(notificationId, recipientId) {
-  await pool.query(
+  const { rowCount } = await pool.query(
     `DELETE FROM notifications WHERE id = $1 AND recipient_id = $2`,
     [notificationId, recipientId]
   );
+
+  return rowCount > 0;
 }
 
 export async function createNotification({ eventId, recipientId, actorId, type, title, message, metadata }) {
