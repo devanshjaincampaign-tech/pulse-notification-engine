@@ -1,5 +1,4 @@
-import { registerUser, login} from './auth.service.js';
-
+import { registerUser, login, refreshAccessToken } from './auth.service.js';
 export async function registerController(req, res, next) {
   try {
     const { username, email, password } = req.validated.body;
@@ -22,4 +21,14 @@ export async function loginController(req, res, next) {
 
 export function meController(req,res){
     res.status(200).json({userId: req.user.userId});
+}
+
+export async function refreshController(req, res, next) {
+  try {
+    const { refreshToken } = req.validated.body;
+    const result = await refreshAccessToken(refreshToken);
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
 }

@@ -11,6 +11,12 @@ vi.mock('bcrypt', () => ({
   },
 }));
 
+vi.mock('./refreshToken.repository.js', () => ({
+  storeRefreshToken: vi.fn(),
+  findValidRefreshToken: vi.fn(),
+  revokeRefreshToken: vi.fn(),
+}));
+
 import { registerUser } from './auth.service.js';
 import { findUserByEmail, createUser } from './auth.repository.js';
 
@@ -30,7 +36,8 @@ describe('registerUser', () => {
     const result = await registerUser({ username: 'newuser', email: 'new@example.com', password: 'password123' });
 
     expect(result.user.email).toBe('new@example.com');
-    expect(result.token).toBeDefined();
+    expect(result.accessToken).toBeDefined();
+    expect(result.refreshToken).toBeDefined();
     expect(createUser).toHaveBeenCalledWith({
       username: 'newuser',
       email: 'new@example.com',
