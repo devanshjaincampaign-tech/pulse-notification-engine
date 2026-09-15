@@ -15,7 +15,7 @@ export const pool=new Pool({
     database: env.db.name,
     host: env.db.host,
     port: env.db.port,
-    max: 10,
+    max: 25,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
 });
