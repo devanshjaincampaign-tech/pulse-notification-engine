@@ -38,10 +38,13 @@ describe('registerUser', () => {
     expect(result.user.email).toBe('new@example.com');
     expect(result.accessToken).toBeDefined();
     expect(result.refreshToken).toBeDefined();
-    expect(createUser).toHaveBeenCalledWith({
-      username: 'newuser',
-      email: 'new@example.com',
-      passwordHash: 'hashed_password_123',
-    });
+    expect(createUser).toHaveBeenCalledWith(
+        {
+          username: 'newuser',
+          email: 'new@example.com',
+          passwordHash: 'hashed_password_123',
+        },
+        expect.anything()
+      );
   });
 });

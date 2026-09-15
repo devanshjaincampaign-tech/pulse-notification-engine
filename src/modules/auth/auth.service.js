@@ -5,6 +5,7 @@ import { ConflictError, UnauthorizedError } from '../../common/errors/index.js';
 import { randomBytes } from 'crypto';
 import { generateRefreshToken, hashToken } from '../../utils/refreshToken.js';
 import { storeRefreshToken, findValidRefreshToken, revokeRefreshToken } from './refreshToken.repository.js';
+import { withTransaction } from '../../config/transaction.js';
 
 async function issueTokens(userId) {
   const accessToken = signToken({ userId });
@@ -26,8 +27,19 @@ export async function registerUser({ username, email, password }) {
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const user = await createUser({ username, email, passwordHash });
-  const { accessToken, refreshToken } = await issueTokens(user.id);
+
+  const { user, accessToken, refreshToken } = await withTransaction(async (client) => {
+    const user = await createUser({ username, email, passwordHash }, client);
+
+    const accessToken = signToken({ userId: user.id });
+    const refreshToken = generateRefreshToken();
+    const tokenHash = hashToken(refreshToken);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    await storeRefreshToken(user.id, tokenHash, expiresAt, client);
+
+    return { user, accessToken, refreshToken };
+  });
 
   return { user, accessToken, refreshToken };
 }
