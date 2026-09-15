@@ -26,3 +26,7 @@ socket.on('disconnect', () => {
 socket.on('notification', (data) => {
   console.log('NEW NOTIFICATION RECEIVED:', data);
 });
+
+socket.on('sync', (data) => {
+  console.log('SYNC — missed notifications:', data.notifications.length);
+});

@@ -4,6 +4,8 @@ import { setIoInstance } from './socketEmitter.js';
 import { redisSubscriber, connectRedisSubscriber } from '../config/redis.js';
 import { NOTIFICATION_CHANNEL } from '../events/redisChannel.js';
 import { deliverLocally } from './socketEmitter.js';
+import { getNotificationsForUser } from '../modules/notifications/notification.repository.js';
+import { logger } from '../config/logger.js';
 
 export async function initializeWebSocket(httpServer){
     const io=new Server(httpServer);
@@ -18,16 +20,25 @@ export async function initializeWebSocket(httpServer){
     });
     io.use(socketAuthMiddleware);
 
-    io.on('connection',(socket)=>{
-        const room=`user:${socket.userId}`;
-        socket.join(room);
+    io.on('connection', async (socket) => {
+  try {
+    const room = `user:${socket.userId}`;
+    socket.join(room);
 
-        console.log(`User ${socket.userId} connected, joined room ${room}`);
+    logger.info({ userId: socket.userId, room }, 'User connected');
 
-        socket.on('disconnect', () =>{
-            console.log(`User ${socket.userId} disconnected`);
-        })
-    })
+    const missed = await getNotificationsForUser(socket.userId, { limit: 50, offset: 0 });
+    const unread = missed.filter((n) => !n.is_read);
+
+    socket.emit('sync', { notifications: unread });
+  } catch (err) {
+    logger.error({ userId: socket.userId, err }, 'Failed during connection setup');
+  }
+
+  socket.on('disconnect', () => {
+    logger.info({ userId: socket.userId }, 'User disconnected');
+  });
+});
 
     return io;
 }
