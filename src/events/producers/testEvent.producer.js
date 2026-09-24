@@ -13,3 +13,16 @@ export function emitPostLiked({actorId,targetUserId,postId}){
 
     eventBus.emit(event.eventType,event);
 }
+
+// src/events/producers/testEvent.producer.js — add this function
+export function emitUserFollowed({ actorId, targetUserId }) {
+  const event = createEvent({
+    eventType: EVENT_TYPES.USER_FOLLOWED,
+    source: 'test-producer',
+    actorId,
+    targetUserId,
+    payload: {},
+  });
+
+  eventBus.emit(event.eventType, event);
+}

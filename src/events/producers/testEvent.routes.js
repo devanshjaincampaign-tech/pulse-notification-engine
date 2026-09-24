@@ -1,6 +1,6 @@
 import { Router} from 'express';
 import { requireAuth } from '../../middleware/auth.middleware.js';
-import { emitPostLiked } from './testEvent.producer.js';
+import { emitPostLiked, emitUserFollowed} from './testEvent.producer.js';
 
 const router=Router();
 
@@ -17,6 +17,17 @@ router.post('/post-liked', requireAuth,(req,res)=>{
     res.status(200).json({
         message: 'Event emitted'
     });
+});
+
+router.post('/user-followed', requireAuth, (req, res) => {
+  const { targetUserId } = req.body;
+
+  emitUserFollowed({
+    actorId: req.user.userId,
+    targetUserId,
+  });
+
+  res.status(200).json({ message: 'Event emitted' });
 });
 
 export default router;
