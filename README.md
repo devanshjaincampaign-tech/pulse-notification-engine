@@ -13,7 +13,6 @@ delivery path are not yet a durable, replayable messaging system.
 ## Table of contents
 
 - [What Pulse does](#what-pulse-does)
-- [Current project rating](#current-project-rating)
 - [Architecture](#architecture)
 - [Request and notification flows](#request-and-notification-flows)
 - [Implemented capabilities](#implemented-capabilities)
@@ -49,24 +48,6 @@ Pulse provides:
 
 The persistence path is the source of truth. Socket delivery is best effort:
 an offline user can still retrieve notifications through the REST API.
-
-## Current project rating
-
-### Overall: 7.5/10 — strong portfolio-grade foundation, not production-complete
-
-| Area | Rating | Assessment |
-|---|---:|---|
-| Core notification behavior | 8.5/10 | PostgreSQL persistence, ownership controls, preferences, idempotency, and unread operations are present. |
-| Authentication | 8/10 | Registration, login, `/me`, access tokens, refresh-token rotation, and generic login errors are implemented. |
-| Real-time delivery | 8/10 | Authenticated Socket.IO rooms, multi-device delivery, Redis fan-out, and reconnect sync are implemented. |
-| Code organization | 8/10 | Modules are separated by domain, with shared middleware, configuration, repositories, services, and event handlers. |
-| Validation and error handling | 7/10 | API schemas and centralized errors exist, but development event routes and event envelopes still need runtime validation. |
-| Testing | 7/10 | Unit, integration, and WebSocket tests exist and run in CI when PostgreSQL and Redis are available. |
-| Operations and deployment | 6.5/10 | Docker and CI are useful, but migrations, durable event processing, metrics, and production deployment automation need work. |
-| Security maturity | 7/10 | Good baseline controls; access-token revocation, session management, WebSocket abuse controls, and secret management remain. |
-
-This rating is based on the implementation currently present in the
-repository, not on planned functionality or README claims.
 
 ## Architecture
 
