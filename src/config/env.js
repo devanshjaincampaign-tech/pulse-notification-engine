@@ -34,6 +34,11 @@ if(missing.length>0){
     process.exit(1);
 }
 
+const positiveInteger = (value, fallback) => {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 export const env={
     nodeEnv: process.env.NODE_ENV || 'development',
     port: Number(process.env.PORT),
@@ -58,5 +63,15 @@ export const env={
         retryBaseDelayMs: Number(process.env.OUTBOX_RETRY_BASE_DELAY_MS || 500),
         retryMaxDelayMs: Number(process.env.OUTBOX_RETRY_MAX_DELAY_MS || 30000),
         leaseMs: Number(process.env.OUTBOX_LEASE_MS || 60000),
+    },
+    websocket: {
+        maxConnectionsPerIp: positiveInteger(process.env.WS_MAX_CONNECTIONS_PER_IP, 10),
+        maxHandshakesPerMinute: positiveInteger(process.env.WS_MAX_HANDSHAKES_PER_MINUTE, 60),
+        maxMessagesPerMinute: positiveInteger(process.env.WS_MAX_MESSAGES_PER_MINUTE, 120),
+        maxPayloadBytes: positiveInteger(process.env.WS_MAX_PAYLOAD_BYTES, 65536),
+        trustProxy: process.env.WS_TRUST_PROXY === 'true',
+    },
+    metrics: {
+        token: process.env.METRICS_TOKEN || null,
     },
 };

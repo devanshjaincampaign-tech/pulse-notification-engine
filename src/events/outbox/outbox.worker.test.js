@@ -23,6 +23,7 @@ describe('outbox worker', () => {
     const publish = vi.fn();
     const worker = createOutboxWorker({
       claim: vi.fn().mockResolvedValue([storedEvent]),
+      getStats: vi.fn().mockResolvedValue([]),
       processEvent,
       publish,
     });
@@ -41,6 +42,7 @@ describe('outbox worker', () => {
     const retry = vi.fn();
     const worker = createOutboxWorker({
       claim: vi.fn().mockResolvedValue([storedEvent]),
+      getStats: vi.fn().mockResolvedValue([]),
       processEvent: vi.fn().mockRejectedValue(new Error('temporary')),
       retry,
       retryBaseDelayMs: 1,
@@ -61,6 +63,7 @@ describe('outbox worker', () => {
     const deadLetter = vi.fn();
     const worker = createOutboxWorker({
       claim: vi.fn().mockResolvedValue([{ ...storedEvent, attempts: 3 }]),
+      getStats: vi.fn().mockResolvedValue([]),
       processEvent: vi.fn().mockRejectedValue(new Error('permanent')),
       deadLetter,
       maxAttempts: 3,

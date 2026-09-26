@@ -9,8 +9,13 @@ export const registerSchema = z.object({
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  deviceName: z.string().trim().min(1).max(100).optional(),
 });
 
 export const refreshSchema = z.object({
   refreshToken: z.string().min(1),
+});
+
+export const sessionIdParamSchema = z.object({
+  id: z.string().uuid(),
 });

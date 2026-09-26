@@ -17,6 +17,18 @@ export async function insertEvent(event, client = pool) {
   return rowCount === 1;
 }
 
+export async function getOutboxStats(client = pool) {
+  const { rows } = await client.query(
+    `SELECT status, COUNT(*)::INTEGER AS count
+     FROM event_outbox
+     GROUP BY status`
+  );
+  return ['pending', 'processing', 'published', 'dead_letter'].map((status) => ({
+    status,
+    count: rows.find((row) => row.status === status)?.count || 0,
+  }));
+}
+
 export async function claimEvents({ workerId, limit = 10, leaseMs = 60000 } = {}) {
   const client = await pool.connect();
   try {

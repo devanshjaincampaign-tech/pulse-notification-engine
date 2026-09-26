@@ -3,8 +3,8 @@
 ![Tests](https://github.com/devanshjaincampaign-tech/pulse-notification-engine/actions/workflows/test.yml/badge.svg)
 
 Pulse is a production-oriented, real-time notification backend built with
-Node.js. It combines a REST API, PostgreSQL persistence, an in-process event
-bus, Redis Pub/Sub, and authenticated Socket.IO connections.
+Node.js. It combines a REST API, PostgreSQL persistence and a durable event
+outbox, Redis Pub/Sub, and authenticated Socket.IO connections.
 
 The notification path uses a PostgreSQL-backed durable event outbox. Redis
 remains the real-time delivery fan-out layer, while PostgreSQL provides the
@@ -37,8 +37,8 @@ Pulse provides:
 
 1. User registration and login with bcrypt password hashing.
 2. Short-lived JWT access tokens and rotating, persisted refresh tokens.
-3. A durable PostgreSQL notification feed with ownership checks and
-   idempotency.
+3. A durable PostgreSQL notification feed and event outbox with ownership
+   checks, retries, dead-letter tracking, and idempotent processing.
 4. Per-user notification preferences.
 5. Real-time delivery to every connected device for a user.
 6. Cross-instance delivery through Redis Pub/Sub.
@@ -106,9 +106,12 @@ be retried by the outbox worker.
    `/api/auth/login`.
 2. The API validates the request with Zod.
 3. Passwords are hashed or compared with bcrypt.
-4. The API returns an access token and refresh token.
-5. The refresh token is stored as a hash in PostgreSQL and rotated at refresh.
-6. The access token authenticates REST requests and Socket.IO handshakes.
+4. The API creates a device session and returns a session-bound access token
+   and refresh token.
+5. The refresh token is stored as a hash in PostgreSQL and rotated
+   transactionally.
+6. REST and Socket.IO authentication check that the associated session remains
+   active.
 
 ### Notification flow
 
@@ -146,11 +149,17 @@ lost event will eventually be replayed.
 - `POST /api/auth/login`
 - `POST /api/auth/refresh`
 - `GET /api/auth/me`
+- `GET /api/auth/sessions`
+- `POST /api/auth/logout` (revoke the current session)
+- `POST /api/auth/logout-all`
+- `DELETE /api/auth/sessions/:id` (revoke one of the current user's sessions)
 - bcrypt password hashing
 - generic invalid-login responses
 - JWT access tokens
-- seven-day, hashed refresh tokens with rotation and revocation
-- transactional user and initial refresh-token creation
+- seven-day, hashed refresh tokens with transactional rotation and reuse detection
+- device/session records, per-device/global logout, and 30-day inactive-session cleanup
+- session-bound access tokens checked against PostgreSQL on REST and WebSocket requests
+- transactional user, session, and initial refresh-token creation
 
 ### Notification management
 
@@ -175,6 +184,7 @@ lost event will eventually be replayed.
 - `USER_FOLLOWED` consumer and notification handler
 - development-only test event routes
 - authenticated Socket.IO handshakes
+- per-IP connection and inbound-message rate limits, plus a bounded packet size
 - `user:<id>` rooms for multi-device delivery
 - Redis Pub/Sub fan-out between application instances
 - unread notification sync on connection and reconnection
@@ -192,7 +202,7 @@ The following event types are defined but do not yet have consumers:
 | PostgreSQL 16 | Users, refresh tokens, notifications, preferences, and migrations |
 | Redis 7 | Pub/Sub delivery fan-out and shared authentication rate limits |
 | Socket.IO 4 | Authenticated real-time transport and user rooms |
-| JWT | Stateless access-token authentication |
+| JWT | Short-lived access tokens bound to revocable database sessions |
 | bcrypt | Password hashing |
 | Zod | Runtime request validation |
 | Pino | Structured application logging |
@@ -222,6 +232,7 @@ pulse-notification-system/
 │   │   ├── database.js                  # PostgreSQL pool
 │   │   ├── env.js                       # Environment loading and required variables
 │   │   ├── logger.js                    # Pino logger
+│   │   ├── metrics.js                   # Process-local Prometheus metrics
 │   │   └── redis.js                     # Redis clients and connections
 │   ├── common/
 │   │   ├── errors/                      # Application error classes and exports
@@ -229,7 +240,7 @@ pulse-notification-system/
 │   │   └── utils/                       # Retry/backoff and shared utilities
 │   ├── db/
 │   │   ├── migrate.js                   # Ordered SQL migration runner
-│   │   └── migrations/                  # Users, notifications, preferences, refresh tokens
+│   │   └── migrations/                  # Users, notifications, preferences, outbox, sessions
 │   ├── middleware/
 │   │   └── auth.middleware.js            # REST JWT authentication
 │   ├── events/
@@ -312,6 +323,9 @@ Check the API:
 curl http://localhost:3000/health
 ```
 
+`/ready` checks both the database and Redis; `/metrics` serves Prometheus
+metrics. Keep `/metrics` private to your monitoring network in production.
+
 Expected response:
 
 ```json
@@ -349,6 +363,18 @@ variable is missing.
 | `REDIS_PORT` | Yes | `6379` | Redis port. |
 | `JWT_SECRET` | Yes | change-me | Secret used to sign access tokens. |
 | `CORS_ORIGIN` | No | `https://app.example.com` | Allowed frontend origin in production. |
+| `OUTBOX_POLL_INTERVAL_MS` | No | `1000` | Delay between durable outbox worker polls. |
+| `OUTBOX_BATCH_SIZE` | No | `20` | Maximum events claimed in one poll. |
+| `OUTBOX_MAX_ATTEMPTS` | No | `5` | Attempts before an event is dead-lettered. |
+| `OUTBOX_RETRY_BASE_DELAY_MS` | No | `500` | Initial retry delay. |
+| `OUTBOX_RETRY_MAX_DELAY_MS` | No | `30000` | Maximum retry delay. |
+| `OUTBOX_LEASE_MS` | No | `60000` | Claim lease duration before a processing event can be reclaimed. |
+| `WS_MAX_CONNECTIONS_PER_IP` | No | `10` | Maximum authenticated WebSocket connections per client IP. |
+| `WS_MAX_HANDSHAKES_PER_MINUTE` | No | `60` | Maximum Socket.IO handshakes per client IP in a rolling minute. |
+| `WS_MAX_MESSAGES_PER_MINUTE` | No | `120` | Maximum inbound Socket.IO events per IP in a rolling minute. |
+| `WS_MAX_PAYLOAD_BYTES` | No | `65536` | Maximum Socket.IO packet size in bytes. |
+| `WS_TRUST_PROXY` | No | `false` | Trust the first `X-Forwarded-For` address only behind a trusted proxy. |
+| `METRICS_TOKEN` | Production | — | Bearer token required to expose `/metrics` in production (otherwise endpoint is hidden). |
 
 For the test suite, `.env.test` points to the isolated test database on port
 `5433` and the local Redis instance.
@@ -372,10 +398,21 @@ in logs for correlation.
 | `POST` | `/login` | No | Authenticate and return user, access token, and refresh token. |
 | `POST` | `/refresh` | No | Rotate a valid refresh token and return replacement tokens. |
 | `GET` | `/me` | Yes | Return the authenticated user's identity. |
+| `GET` | `/sessions` | Yes | List the authenticated user's active devices/sessions. |
+| `POST` | `/logout` | Yes | Revoke the session used by this access token. |
+| `POST` | `/logout-all` | Yes | Revoke every active session for the authenticated user. |
+| `DELETE` | `/sessions/:id` | Yes | Revoke one owned session by UUID. |
 
 Registration requires a valid email and a password of at least eight
 characters. Login intentionally uses the same error for an unknown email and
 an incorrect password.
+Login optionally accepts a `deviceName` (up to 100 characters); user-agent and
+remote IP metadata are captured from the request. Sessions are revoked
+immediately for subsequent REST and WebSocket handshakes. Already established
+WebSocket connections are disconnected across instances through Redis when a
+session is revoked. The session list includes a `current` flag for the token's
+own session. Reusing a refresh token that has already been rotated revokes its
+session. Expired/revoked session records are cleaned up after 30 days.
 
 Example:
 
@@ -421,8 +458,8 @@ intended for local demonstrations, not external producer traffic.
 | `POST` | `/post-liked` | Emit a `POST_LIKED` event. |
 | `POST` | `/user-followed` | Emit a `USER_FOLLOWED` event. |
 
-Both routes require authentication. Their request bodies still need stronger
-runtime validation before they should be exposed beyond development.
+Both routes require authentication and validate request bodies with Zod.
+Events are persisted to the PostgreSQL outbox before the route responds.
 
 ## WebSocket reference
 
@@ -446,14 +483,17 @@ socket.on("notification", (notification) => {
 
 On connection, the server:
 
-1. verifies the JWT;
-2. joins the socket to `user:<id>`;
-3. retrieves up to 50 newest notifications;
-4. emits the unread subset in a `sync` event.
+1. verifies the JWT and checks that its session is active;
+2. enforces per-IP handshake and active-connection limits;
+3. joins the socket to `user:<id>` and, for session-bound tokens, `session:<id>`;
+4. queries up to 50 unread notifications directly from PostgreSQL;
+5. emits those unread notifications in a `sync` event.
 
 Every device for the same user joins the same room. A notification published
 by any instance is delivered to all local instances through Redis, and each
-instance emits only if it owns a connection for that user.
+instance emits only if it owns a connection for that user. Inbound socket
+events are rate-limited by IP and oversized packets are rejected. These IP
+counters are in-memory and apply per app instance.
 
 ## Event model
 
@@ -465,8 +505,8 @@ Events are created with this envelope:
   "eventType": "POST_LIKED",
   "timestamp": "2026-01-01T00:00:00.000Z",
   "source": "example-service",
-  "actorId": "uuid",
-  "targetUserId": "uuid",
+  "actorId": 17,
+  "targetUserId": 42,
   "payload": {}
 }
 ```
@@ -512,6 +552,38 @@ Stores per-user in-app and email settings. The pair
 
 Stores hashed refresh tokens, owning users, expiration, revocation state, and
 timestamps. Raw refresh tokens are returned to clients but are not persisted.
+Each token belongs to a `user_sessions` record and points to its replacement
+after rotation; presenting an already-rotated token revokes its entire session.
+
+### `user_sessions`
+
+Stores the device label, user agent, IP address, creation/last-use/expiry times,
+and revocation state for each authenticated device. `GET /api/auth/sessions`
+only returns active sessions. Expired or revoked session records are purged
+after 30 days; their refresh-token history is retained during that period for
+reuse detection.
+
+## Health, metrics, and correlation
+
+- `GET /health` is a liveness check and does not depend on backing services.
+- `GET /ready` checks PostgreSQL and Redis and returns HTTP 503 if either is
+  unavailable.
+- `GET /metrics` exposes Prometheus text metrics for HTTP request counts and
+  latency, outbox row counts by state and processing outcomes/duration/age,
+  notification creation and Pub/Sub delivery outcomes/latency, WebSocket
+  connections, and unread sync size/time.
+- `/metrics` is hidden in production unless `METRICS_TOKEN` is configured; when
+  enabled it requires `Authorization: Bearer <token>`.
+- HTTP request IDs are returned as `X-Request-ID` and included in structured
+  request logs; event IDs are included in outbox and notification logs for
+  cross-component correlation. This is lightweight log correlation, not an
+  OpenTelemetry exporter or distributed span backend.
+
+`WS_MAX_CONNECTIONS_PER_IP`, `WS_MAX_MESSAGES_PER_MINUTE`, and
+`WS_MAX_PAYLOAD_BYTES` configure WebSocket limits. `WS_TRUST_PROXY` defaults
+to false; enable it only behind a trusted proxy that overwrites
+`X-Forwarded-For`. These in-memory IP limits apply per app instance, not
+globally across the load-balanced deployment.
 
 Important indexes include the notification feed index on
 `(recipient_id, created_at DESC)` and the unread-count index on
@@ -593,6 +665,10 @@ Implemented baseline protections:
 - bcrypt password hashing
 - JWT verification for REST and WebSocket authentication
 - hashed refresh-token persistence
+- transactional refresh rotation, replay-triggered session revocation, and
+  per-device/global logout
+- immediate access-token revocation through session checks (legacy access
+  tokens without a session claim remain valid only until their short expiry)
 - generic login errors to reduce account enumeration
 - parameterized SQL queries
 - Zod validation on supported API schemas
@@ -604,6 +680,8 @@ Implemented baseline protections:
 - non-root application container
 - production container installation without development dependencies
 - development test routes excluded from production
+- WebSocket per-IP handshake/connection/message limits, packet-size bounds, and safe
+  validation of untrusted Redis Pub/Sub payloads
 
 Bearer headers are used instead of authentication cookies, so CSRF protection
 is not currently required. If browser cookies are introduced, add CSRF
@@ -611,35 +689,27 @@ protection before using them for authentication.
 
 ## Remaining work
 
-The P0 reliability work is implemented. The remaining work is now primarily
-hardening, product expansion, and production operations.
+The P0 reliability and P1 security/operations work is implemented. Remaining
+work is now primarily product expansion, distributed observability, and
+production operations.
 
 ### Reliability follow-ups
 
 - Add an administrative workflow to inspect and replay dead-letter events.
-- Add metrics and alerts for pending, processing, and dead-letter outbox rows.
+- Configure alert rules for pending, processing, and dead-letter outbox
+  thresholds, as well as notification and WebSocket failures.
 - Consider a separate worker deployment when API and event-processing scaling
   requirements diverge.
 
 ### Security and operations
 
-- **Make refresh-token rotation transactional.** Revoking the old token and
-  storing the replacement are separate operations; a failure between them can
-  invalidate a session without issuing replacement credentials.
-- **Add session management.** Consider global logout, per-device sessions,
-  refresh-token cleanup, and reuse detection.
-- **Add access-token revocation strategy.** Current revocation applies to
-  refresh tokens; already-issued access tokens remain valid until expiry.
-- **Protect WebSocket handshakes and messages.** Add connection/IP limits and
-  abuse controls separate from HTTP rate limiting.
-- **Harden Redis message parsing.** Validate and safely handle malformed
-  Pub/Sub payloads instead of allowing callback exceptions.
-- **Add health/readiness checks.** `/health` currently reports application
-  liveness only; production orchestration should also be able to distinguish
-  database and Redis readiness.
-- **Add metrics and tracing.** Track event lag, notification creation errors,
-  Pub/Sub delivery, WebSocket connections, unread sync size, and endpoint
-  latency.
+Implemented P1 security and operations capabilities include transactional
+refresh rotation, session listing and revocation, session cleanup and replay
+detection, session-bound access-token checks, WebSocket handshake/connection/
+message limits, Redis Pub/Sub validation, liveness/readiness endpoints, and
+Prometheus metrics. Metrics and WebSocket IP limits are process-local; configure
+scraping and alerting separately. Legacy access tokens without a session claim
+remain valid until their short expiry.
 
 ### P2 — Product completeness
 
@@ -661,6 +731,8 @@ hardening, product expansion, and production operations.
 - Notification delivery is best effort after database persistence.
 - Redis is required for startup and authentication rate limiting.
 - Connection sync returns up to 50 unread notifications.
+- Metrics and WebSocket IP limits are per-process, not shared across instances.
+- There is no OpenTelemetry exporter or distributed tracing backend.
 - There is no built-in email sender despite storing email preferences.
 - Load and chaos testing are not part of the repository's automated CI job.
 

@@ -6,6 +6,7 @@ import { getPreferenceForType } from '../../modules/preferences/preference.repos
 import { retryWithBackoff } from '../../common/utils/retry.js';
 import { logger } from '../../config/logger.js';
 import { buildUserFollowedNotification } from '../handlers/userFollowed.handler.js';
+import { increment } from '../../config/metrics.js';
 async function handlePostLiked(event) {
     const preference = await getPreferenceForType(event.targetUserId, event.eventType);
 
@@ -19,10 +20,16 @@ async function handlePostLiked(event) {
 
     const notificationData = buildPostLikedNotification(event);
 
-    const notification = await retryWithBackoff(
-      () => createNotification(notificationData),
-      { isRetryable: (err) => err.code !== '23505' }
-    );
+    let notification;
+    try {
+      notification = await retryWithBackoff(
+        () => createNotification(notificationData),
+        { isRetryable: (err) => err.code !== '23505' }
+      );
+    } catch (err) {
+      increment('notification_creation_errors_total', { event_type: event.eventType }, 1, 'Notification creation errors');
+      throw err;
+    }
 
     logger.info(
       { eventId: event.eventId, userId: notification.recipient_id, notificationId: notification.id },
@@ -44,10 +51,16 @@ async function handleUserFollowed(event) {
 
     const notificationData = buildUserFollowedNotification(event);
 
-    const notification = await retryWithBackoff(
-      () => createNotification(notificationData),
-      { isRetryable: (err) => err.code !== '23505' }
-    );
+    let notification;
+    try {
+      notification = await retryWithBackoff(
+        () => createNotification(notificationData),
+        { isRetryable: (err) => err.code !== '23505' }
+      );
+    } catch (err) {
+      increment('notification_creation_errors_total', { event_type: event.eventType }, 1, 'Notification creation errors');
+      throw err;
+    }
 
     logger.info(
       { eventId: event.eventId, userId: notification.recipient_id, notificationId: notification.id },

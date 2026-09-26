@@ -7,9 +7,11 @@ import app from './app.js';
 import http from 'http';
 import { initializeWebSocket } from './websocket/index.js';
 import { logger } from './config/logger.js';
+import { cleanupExpiredSessions } from './modules/auth/auth.service.js';
 
 let httpServer;
 let outboxWorker;
+let sessionCleanupTimer;
 
 function gracefulShutdown(signal) {
   logger.info({ signal }, 'Shutdown signal received, closing connections');
@@ -18,6 +20,7 @@ function gracefulShutdown(signal) {
     logger.info({}, 'HTTP server closed');
 
     await outboxWorker?.stop();
+    if (sessionCleanupTimer) clearInterval(sessionCleanupTimer);
     await pool.end();
     logger.info({}, 'Postgres pool closed');
 
@@ -37,6 +40,11 @@ function gracefulShutdown(signal) {
 async function startServer() {
   await testConnection();
   await connectRedis();
+  await cleanupExpiredSessions();
+  sessionCleanupTimer = setInterval(() => {
+    cleanupExpiredSessions().catch((err) => logger.error({ err }, 'Session cleanup failed'));
+  }, 24 * 60 * 60 * 1000);
+  sessionCleanupTimer.unref?.();
   outboxWorker = createOutboxWorker().start();
 
   httpServer = http.createServer(app);

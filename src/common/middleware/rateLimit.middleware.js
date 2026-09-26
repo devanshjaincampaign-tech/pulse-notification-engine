@@ -4,7 +4,6 @@ import { redisClient } from '../../config/redis.js';
 
 export function createAuthRateLimiter() {
   let limiter = null;
-
   return (req, res, next) => {
     if (!limiter) {
       limiter = rateLimit({
@@ -13,6 +12,7 @@ export function createAuthRateLimiter() {
         message: { error: 'Too many attempts, please try again later' },
         standardHeaders: true,
         legacyHeaders: false,
+        validate: { creationStack: false },
         store: new RedisStore({
           sendCommand: (...args) => redisClient.sendCommand(args),
         }),

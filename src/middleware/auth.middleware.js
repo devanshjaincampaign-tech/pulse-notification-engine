@@ -1,19 +1,23 @@
-import { verifyToken } from "../utils/jwt.js";
+import { verifyToken } from '../utils/jwt.js';
+import { isSessionActive } from '../modules/auth/refreshToken.repository.js';
 
-export function requireAuth(req,res,next){
-    const authHeader=req.headers.authorization;
-    if(!authHeader || !authHeader.startsWith('Bearer ')){
-        return res.status(401).json({error:'No token provided'});
-    }
+export async function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No token provided' });
+  }
 
-    const token= authHeader.split(' ')[1];
-
-    try{
-        const payload=verifyToken(token);
-        req.user={userId: payload.userId};
-        next();
+  try {
+    const payload = verifyToken(authHeader.slice(7));
+    if (payload.sessionId && !(await isSessionActive(payload.sessionId, payload.userId))) {
+      return res.status(401).json({ error: 'Session revoked or expired' });
     }
-    catch(err){
-        return res.status(401).json({error:'Invalid or expired token'});
+    req.user = { userId: payload.userId, sessionId: payload.sessionId || null };
+    return next();
+  } catch (err) {
+    if (err?.name === 'JsonWebTokenError' || err?.name === 'TokenExpiredError' || err?.name === 'NotBeforeError') {
+      return res.status(401).json({ error: 'Invalid or expired token' });
     }
+    return next(err);
+  }
 }
