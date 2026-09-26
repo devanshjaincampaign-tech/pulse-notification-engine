@@ -1,7 +1,7 @@
 import { env } from "./config/env.js";
 import { testConnection, pool } from "./config/database.js";
 import { connectRedis, redisClient, redisSubscriber } from "./config/redis.js";
-import { registerNotificationConsumers } from './events/consumers/notification.consumer.js';
+import { createOutboxWorker } from './events/outbox/outbox.worker.js';
 import app from './app.js';
 
 import http from 'http';
@@ -9,6 +9,7 @@ import { initializeWebSocket } from './websocket/index.js';
 import { logger } from './config/logger.js';
 
 let httpServer;
+let outboxWorker;
 
 function gracefulShutdown(signal) {
   logger.info({ signal }, 'Shutdown signal received, closing connections');
@@ -16,6 +17,7 @@ function gracefulShutdown(signal) {
   httpServer.close(async () => {
     logger.info({}, 'HTTP server closed');
 
+    await outboxWorker?.stop();
     await pool.end();
     logger.info({}, 'Postgres pool closed');
 
@@ -35,7 +37,7 @@ function gracefulShutdown(signal) {
 async function startServer() {
   await testConnection();
   await connectRedis();
-  registerNotificationConsumers();
+  outboxWorker = createOutboxWorker().start();
 
   httpServer = http.createServer(app);
   await initializeWebSocket(httpServer);

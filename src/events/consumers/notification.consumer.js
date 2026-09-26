@@ -1,4 +1,3 @@
-import { eventBus } from '../eventBus.js';
 import { EVENT_TYPES } from '../eventTypes.js';
 import { buildPostLikedNotification } from '../handlers/postLiked.handler.js';
 import { createNotification } from '../../modules/notifications/notification.repository.js';
@@ -8,7 +7,6 @@ import { retryWithBackoff } from '../../common/utils/retry.js';
 import { logger } from '../../config/logger.js';
 import { buildUserFollowedNotification } from '../handlers/userFollowed.handler.js';
 async function handlePostLiked(event) {
-  try {
     const preference = await getPreferenceForType(event.targetUserId, event.eventType);
 
     if (preference && !preference.in_app_enabled) {
@@ -31,17 +29,9 @@ async function handlePostLiked(event) {
       'Notification created'
     );
     await emitToUser(notification.recipient_id, 'notification', notification);
-  } catch (err) {
-    if (err.code === '23505') {
-      logger.warn({ eventId: event.eventId }, 'Duplicate event detected, skipping');
-    } else {
-      logger.error({ eventId: event.eventId, err }, 'Failed to process notification event');
-    }
-  }
 }
 
 async function handleUserFollowed(event) {
-  try {
     const preference = await getPreferenceForType(event.targetUserId, event.eventType);
 
     if (preference && !preference.in_app_enabled) {
@@ -64,16 +54,15 @@ async function handleUserFollowed(event) {
       'Notification created'
     );
     await emitToUser(notification.recipient_id, 'notification', notification);
-  } catch (err) {
-    if (err.code === '23505') {
-      logger.warn({ eventId: event.eventId }, 'Duplicate event detected, skipping');
-    } else {
-      logger.error({ eventId: event.eventId, err }, 'Failed to process notification event');
-    }
-  }
 }
 
+export async function dispatchNotificationEvent(event) {
+  if (event.eventType === EVENT_TYPES.POST_LIKED) return handlePostLiked(event);
+  if (event.eventType === EVENT_TYPES.USER_FOLLOWED) return handleUserFollowed(event);
+  throw new Error(`Unsupported notification event type: ${event.eventType}`);
+}
+
+// Kept as a compatibility no-op for callers that used the old in-process bus.
 export function registerNotificationConsumers() {
-  eventBus.on(EVENT_TYPES.POST_LIKED, handlePostLiked);
-  eventBus.on(EVENT_TYPES.USER_FOLLOWED, handleUserFollowed);
+  return dispatchNotificationEvent;
 }

@@ -6,9 +6,9 @@ Pulse is a production-oriented, real-time notification backend built with
 Node.js. It combines a REST API, PostgreSQL persistence, an in-process event
 bus, Redis Pub/Sub, and authenticated Socket.IO connections.
 
-The project is intentionally honest about its current maturity: the core
-notification path is implemented and tested, but the event bus and real-time
-delivery path are not yet a durable, replayable messaging system.
+The notification path uses a PostgreSQL-backed durable event outbox. Redis
+remains the real-time delivery fan-out layer, while PostgreSQL provides the
+recoverable source of truth for events waiting to be processed.
 
 ## Table of contents
 
@@ -57,16 +57,21 @@ graph TB
     LB[Load Balancer]
     App1[App instance 1<br/>Express + Socket.IO]
     App2[App instance 2<br/>Express + Socket.IO]
-    Bus1[In-process EventEmitter]
-    Bus2[In-process EventEmitter]
+    Outbox[(PostgreSQL event outbox)]
+    Worker1[Outbox worker 1]
+    Worker2[Outbox worker 2]
     PG[(PostgreSQL 16)]
     Redis[(Redis 7<br/>Pub/Sub + rate limiting)]
 
     Client -->|HTTP + WebSocket| LB
     LB --> App1
     LB --> App2
-    App1 --> Bus1
-    App2 --> Bus2
+    App1 -->|persist event| Outbox
+    App2 -->|persist event| Outbox
+    Worker1 --> Outbox
+    Worker2 --> Outbox
+    Worker1 --> App1
+    Worker2 --> App2
     App1 -->|persist notification| PG
     App2 -->|persist notification| PG
     App1 -->|publish delivery message| Redis
@@ -79,17 +84,19 @@ graph TB
 
 ### Important delivery boundary
 
-There are two separate messaging layers:
+There are two separate delivery layers:
 
-- **Application event bus:** an in-memory Node.js `EventEmitter`. It is
-  process-local and non-durable.
+- **Event processing:** Producers persist validated events into the PostgreSQL
+  `event_outbox` table. Workers claim rows with PostgreSQL row locks and
+  `SKIP LOCKED`, process them, retry transient failures with backoff, and move
+  exhausted events to `dead_letter`.
 - **Delivery fan-out:** Redis Pub/Sub. Every application instance subscribes,
   checks whether the recipient has a local Socket.IO room, and emits locally.
 
-Redis is required during startup and is not currently an optional accelerator.
-If the process or Redis is unavailable at the wrong time, an event or
-real-time delivery message can be lost. PostgreSQL protects the notification
-record only after the consumer has processed the event.
+Redis is required during startup and remains best effort for live socket
+delivery. PostgreSQL protects events until the notification consumer succeeds;
+an outage can still prevent an immediate WebSocket emission, but the event can
+be retried by the outbox worker.
 
 ## Request and notification flows
 
@@ -108,7 +115,7 @@ record only after the consumer has processed the event.
 ```mermaid
 sequenceDiagram
     participant Producer as Event producer
-    participant Bus as Process-local event bus
+    participant Outbox as PostgreSQL event outbox
     participant Consumer as Notification consumer
     participant Prefs as PostgreSQL preferences
     participant DB as PostgreSQL notifications
@@ -116,8 +123,8 @@ sequenceDiagram
     participant Socket as Recipient app instance
     participant User as Recipient device
 
-    Producer->>Bus: Emit typed event
-    Bus->>Consumer: Invoke handler
+    Producer->>Outbox: Persist validated event
+    Outbox->>Consumer: Worker claims event
     Consumer->>Prefs: Check in-app preference
     Consumer->>DB: Insert event_id and notification
     DB-->>Consumer: Created row or duplicate constraint
@@ -226,10 +233,12 @@ pulse-notification-system/
 │   ├── middleware/
 │   │   └── auth.middleware.js            # REST JWT authentication
 │   ├── events/
-│   │   ├── eventBus.js                  # Process-local EventEmitter
+│   │   ├── eventPublisher.js            # Validated event persistence entry point
 │   │   ├── eventTypes.js                # Shared event type constants
 │   │   ├── createEvent.js               # Event envelope factory
 │   │   ├── redisChannel.js              # Redis notification channel
+│   │   ├── event.schema.js              # Event and producer request schemas
+│   │   └── outbox/                       # Durable worker, claiming, retry, dead letter
 │   │   ├── consumers/                   # Event-to-notification consumers
 │   │   ├── handlers/                    # Notification builders by event type
 │   │   └── producers/                   # Development test producers and routes
@@ -475,8 +484,9 @@ Defined event types:
 | `SECURITY_ALERT` | No | Constant only |
 
 `eventId` is generated with `randomUUID()` and stored as a unique database
-value. A duplicate event is logged and skipped. The event envelope itself is
-not yet validated with a runtime schema.
+value. A duplicate event is ignored by the outbox insert and by notification
+creation. Event envelopes and development producer bodies are validated with
+Zod before persistence.
 
 ## Database schema
 
@@ -601,28 +611,17 @@ protection before using them for authentication.
 
 ## Remaining work
 
-The following items are the highest-value work left, ordered roughly by
-production impact.
+The P0 reliability work is implemented. The remaining work is now primarily
+hardening, product expansion, and production operations.
 
-### P0 — Reliability and correctness
+### Reliability follow-ups
 
-- **Replace or front the in-process EventEmitter with a durable event
-  transport.** Events currently disappear if the process stops before
-  consumption.
-- **Add durable retries and a dead-letter path.** Consumer failures are logged
-  and swallowed; failed events are not replayed.
-- **Make migrations atomic and serialized.** Apply each migration and its
-  `schema_migrations` record in one transaction, protected by a PostgreSQL
-  advisory lock.
-- **Validate event envelopes and development producer request bodies.** Reject
-  missing IDs, invalid UUIDs, unsupported event types, and malformed payloads
-  before they reach consumers.
-- **Fix unread synchronization semantics.** The current implementation fetches
-  50 newest notifications and filters afterward, so older unread notifications
-  can be omitted. Query unread records directly or define and document a
-  deliberate sync limit.
+- Add an administrative workflow to inspect and replay dead-letter events.
+- Add metrics and alerts for pending, processing, and dead-letter outbox rows.
+- Consider a separate worker deployment when API and event-processing scaling
+  requirements diverge.
 
-### P1 — Security and operations
+### Security and operations
 
 - **Make refresh-token rotation transactional.** Revoking the old token and
   storing the replacement are separate operations; a failure between them can
@@ -659,12 +658,9 @@ production impact.
 ## Known limitations
 
 - Redis Pub/Sub is not replayable.
-- The application event bus is process-local.
 - Notification delivery is best effort after database persistence.
 - Redis is required for startup and authentication rate limiting.
-- Connection sync is currently capped at 50 fetched notifications.
-- The migration runner is safe for sequential reruns but not coordinated
-  concurrent deployment.
+- Connection sync returns up to 50 unread notifications.
 - There is no built-in email sender despite storing email preferences.
 - Load and chaos testing are not part of the repository's automated CI job.
 

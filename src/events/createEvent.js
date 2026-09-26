@@ -1,7 +1,8 @@
 import { randomUUID} from 'crypto';
+import { eventEnvelopeSchema } from './event.schema.js';
 
 export function createEvent({eventType,source,actorId=null,targetUserId,payload={}}){
-    return {
+    return eventEnvelopeSchema.parse({
         eventId:randomUUID(),
         eventType,
         timestamp: new Date().toISOString(),
@@ -9,7 +10,7 @@ export function createEvent({eventType,source,actorId=null,targetUserId,payload=
         actorId,
         targetUserId,
         payload,
-    };
+    });
 }
 /*actorId = null as a default — connects directly back to our schema decision: some events genuinely have no actor (security alerts, system events). Rather than forcing every single producer to remember to explicitly pass actorId: null, we default it, so producers that don't have one can simply omit it entirely.*/
 
@@ -20,4 +21,3 @@ export function createEvent({eventType,source,actorId=null,targetUserId,payload=
 /* randomUUID() — generates the actual unique eventId, guaranteed to work correctly with our notifications.event_id UUID column.
 
 new Date().toISOString() — produces a standardized, sortable, unambiguous timestamp string like "2026-08-23T14:30:00.000Z" — the Z indicates UTC, avoiding the exact timezone ambiguity we specifically designed around when choosing TIMESTAMPTZ for our database columns.*/
-

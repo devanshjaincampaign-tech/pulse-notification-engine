@@ -1,8 +1,8 @@
-import { eventBus } from "../eventBus.js";
 import { createEvent } from '../createEvent.js';
 import { EVENT_TYPES } from "../eventTypes.js";
+import { publishEvent } from '../eventPublisher.js';
 
-export function emitPostLiked({actorId,targetUserId,postId}){
+export async function emitPostLiked({actorId,targetUserId,postId}){
     const event = createEvent({
         eventType: EVENT_TYPES.POST_LIKED,
         source: 'test-producer',
@@ -11,11 +11,12 @@ export function emitPostLiked({actorId,targetUserId,postId}){
         payload:{postId},
     });
 
-    eventBus.emit(event.eventType,event);
+    await publishEvent(event);
+    return event;
 }
 
 // src/events/producers/testEvent.producer.js — add this function
-export function emitUserFollowed({ actorId, targetUserId }) {
+export async function emitUserFollowed({ actorId, targetUserId }) {
   const event = createEvent({
     eventType: EVENT_TYPES.USER_FOLLOWED,
     source: 'test-producer',
@@ -24,5 +25,6 @@ export function emitUserFollowed({ actorId, targetUserId }) {
     payload: {},
   });
 
-  eventBus.emit(event.eventType, event);
+  await publishEvent(event);
+  return event;
 }

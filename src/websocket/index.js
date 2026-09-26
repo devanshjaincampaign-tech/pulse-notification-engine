@@ -1,10 +1,10 @@
-import {Server} from 'socket.io';
+﻿import {Server} from 'socket.io';
 import { socketAuthMiddleware } from './socketAuth.js';
 import { setIoInstance } from './socketEmitter.js';
 import { redisSubscriber, connectRedisSubscriber } from '../config/redis.js';
 import { NOTIFICATION_CHANNEL } from '../events/redisChannel.js';
 import { deliverLocally } from './socketEmitter.js';
-import { getNotificationsForUser } from '../modules/notifications/notification.repository.js';
+import { getUnreadNotificationsForUser } from '../modules/notifications/notification.repository.js';
 import { logger } from '../config/logger.js';
 
 export async function initializeWebSocket(httpServer){
@@ -27,8 +27,7 @@ export async function initializeWebSocket(httpServer){
 
     logger.info({ userId: socket.userId, room }, 'User connected');
 
-    const missed = await getNotificationsForUser(socket.userId, { limit: 50, offset: 0 });
-    const unread = missed.filter((n) => !n.is_read);
+    const unread = await getUnreadNotificationsForUser(socket.userId, { limit: 50, offset: 0 });
 
     socket.emit('sync', { notifications: unread });
   } catch (err) {

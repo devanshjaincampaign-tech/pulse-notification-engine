@@ -1,10 +1,23 @@
-import { pool } from '../../config/database.js';
+﻿import { pool } from '../../config/database.js';
 
 export async function getNotificationsForUser(recipientId, { limit = 20, offset = 0 } = {}) {
   const { rows } = await pool.query(
     `SELECT id, event_id, actor_id, type, title, message, metadata, is_read, created_at, read_at
      FROM notifications
      WHERE recipient_id = $1
+     ORDER BY created_at DESC
+     LIMIT $2 OFFSET $3`,
+    [recipientId, limit, offset]
+  );
+
+  return rows;
+}
+
+export async function getUnreadNotificationsForUser(recipientId, { limit = 50, offset = 0 } = {}) {
+  const { rows } = await pool.query(
+    `SELECT id, event_id, actor_id, type, title, message, metadata, is_read, created_at, read_at
+     FROM notifications
+     WHERE recipient_id = $1 AND is_read = false
      ORDER BY created_at DESC
      LIMIT $2 OFFSET $3`,
     [recipientId, limit, offset]
@@ -56,9 +69,16 @@ export async function createNotification({ eventId, recipientId, actorId, type, 
   const { rows } = await pool.query(
     `INSERT INTO notifications (event_id, recipient_id, actor_id, type, title, message, metadata)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (event_id) DO NOTHING
      RETURNING id, event_id, recipient_id, actor_id, type, title, message, metadata, is_read, created_at`,
     [eventId, recipientId, actorId, type, title, message, metadata]
   );
 
-  return rows[0];
+  if (rows[0]) return rows[0];
+  const existing = await pool.query(
+    `SELECT id, event_id, recipient_id, actor_id, type, title, message, metadata, is_read, created_at
+     FROM notifications WHERE event_id = $1`,
+    [eventId]
+  );
+  return existing.rows[0];
 }

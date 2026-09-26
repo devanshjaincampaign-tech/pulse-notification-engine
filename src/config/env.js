@@ -51,4 +51,12 @@ export const env={
         host: process.env.REDIS_HOST,
         port: Number(process.env.REDIS_PORT),
     },
+    outbox: {
+        pollIntervalMs: Number(process.env.OUTBOX_POLL_INTERVAL_MS || 1000),
+        batchSize: Number(process.env.OUTBOX_BATCH_SIZE || 20),
+        maxAttempts: Number(process.env.OUTBOX_MAX_ATTEMPTS || 5),
+        retryBaseDelayMs: Number(process.env.OUTBOX_RETRY_BASE_DELAY_MS || 500),
+        retryMaxDelayMs: Number(process.env.OUTBOX_RETRY_MAX_DELAY_MS || 30000),
+        leaseMs: Number(process.env.OUTBOX_LEASE_MS || 60000),
+    },
 };
