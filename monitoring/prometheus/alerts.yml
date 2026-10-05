@@ -1,0 +1,59 @@
+groups:
+  - name: pulse-notification-system
+    rules:
+      - alert: PulseApiScrapeFailing
+        expr: up{job="pulse-api"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Pulse API metrics endpoint is unavailable
+          description: Prometheus has not successfully scraped the Pulse API for five minutes.
+
+      - alert: PulseOutboxWorkerScrapeFailing
+        expr: up{job="pulse-outbox-worker"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Pulse outbox worker metrics endpoint is unavailable
+          description: Prometheus has not successfully scraped any configured outbox worker for five minutes.
+
+      - alert: PulseOutboxDeadLetterEvents
+        expr: max(outbox_rows{status="dead_letter"}) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Pulse outbox has dead-letter events
+          description: Dead-lettered events remain in the outbox and require operator investigation.
+
+      - alert: PulseOutboxDeadLetterRate
+        expr: sum(increase(outbox_events_total{result="dead_letter"}[10m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Pulse is dead-lettering events
+          description: One or more outbox events have exceeded the retry limit in the last ten minutes.
+
+      - alert: PulseOutboxPendingBacklog
+        expr: max(outbox_rows{status="pending"}) > 500
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Pulse outbox pending backlog is large
+          description: More than 500 pending events have been observed continuously for ten minutes.
+
+      - alert: PulseApiHighServerErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="pulse-api",status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(http_requests_total{job="pulse-api"}[5m])), 0.001) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Pulse API server error rate is elevated
+          description: More than five percent of API requests have returned 5xx responses for ten minutes.

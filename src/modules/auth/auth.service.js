@@ -49,11 +49,21 @@ export async function registerUser({ username, email, password }, context = {}) 
   if (existingUser) throw new ConflictError('Email already registered');
 
   const passwordHash = await bcrypt.hash(password, 10);
-  return withTransaction(async (client) => {
-    const user = await createUser({ username, email, passwordHash }, client);
-    const tokens = await createUserSession(user.id, context, client);
-    return { user, ...tokens };
-  });
+  try {
+    return await withTransaction(async (client) => {
+      const user = await createUser({ username, email, passwordHash }, client);
+      const tokens = await createUserSession(user.id, context, client);
+      return { user, ...tokens };
+    });
+  } catch (error) {
+    if (error?.code === '23505' && error.constraint === 'users_email_key') {
+      throw new ConflictError('Email already registered');
+    }
+    if (error?.code === '23505' && error.constraint === 'users_username_key') {
+      throw new ConflictError('Username already registered');
+    }
+    throw error;
+  }
 }
 
 export async function login({ email, password }, context = {}) {

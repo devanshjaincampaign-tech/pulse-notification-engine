@@ -1,4 +1,5 @@
 ﻿import { pool } from '../../config/database.js';
+import { decodeNotificationCursor, encodeNotificationCursor } from './notification.cursor.js';
 
 export async function getNotificationsForUser(recipientId, { limit = 20, offset = 0 } = {}) {
   const { rows } = await pool.query(
@@ -11,6 +12,31 @@ export async function getNotificationsForUser(recipientId, { limit = 20, offset 
   );
 
   return rows;
+}
+
+export async function getNotificationsForUserByCursor(recipientId, { limit = 20, cursor } = {}) {
+  const position = cursor ? decodeNotificationCursor(cursor) : null;
+  const { rows } = await pool.query(
+    `SELECT id, event_id, actor_id, type, title, message, metadata, is_read, created_at, read_at,
+            to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_created_at
+     FROM notifications
+     WHERE recipient_id = $1
+       AND ($2::timestamptz IS NULL OR (created_at, id) < ($2::timestamptz, $3::integer))
+     ORDER BY created_at DESC, id DESC
+     LIMIT $4`,
+    [recipientId, position?.createdAt ?? null, position?.id ?? null, limit + 1]
+  );
+
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const notifications = pageRows.map(({ cursor_created_at, ...notification }) => notification);
+  return {
+    notifications,
+    hasMore,
+    nextCursor: hasMore && pageRows.length
+      ? encodeNotificationCursor(pageRows[pageRows.length - 1])
+      : null,
+  };
 }
 
 export async function getUnreadNotificationsForUser(recipientId, { limit = 50, offset = 0 } = {}) {
@@ -80,5 +106,8 @@ export async function createNotification({ eventId, recipientId, actorId, type, 
      FROM notifications WHERE event_id = $1`,
     [eventId]
   );
+  if (!existing.rows[0]) {
+    throw new Error(`Notification conflict row for event ${eventId} no longer exists`);
+  }
   return existing.rows[0];
 }

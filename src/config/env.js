@@ -8,7 +8,9 @@ This has been Node's default since basically the beginning. It's synchronous —
 This is the same import/export syntax used in modern frontend JavaScript (React, etc.) — it's now the official JavaScript language standard, not just a Node-specific convention like require was. It supports asynchronous loading under the hood, and has a cleaner, more explicit syntax for picking exactly what you want out of a module.
 */
 
-dotenv.config();
+if (process.env.PULSE_OPERATOR_CLI !== 'true') {
+    dotenv.config();
+}
 
 // Every variable the app genuinely cannot function without
 
@@ -41,7 +43,9 @@ const positiveInteger = (value, fallback) => {
 
 export const env={
     nodeEnv: process.env.NODE_ENV || 'development',
+    appRole: process.env.APP_ROLE || 'all',
     port: Number(process.env.PORT),
+    workerHealthPort: positiveInteger(process.env.WORKER_HEALTH_PORT, 3001),
     jwtSecret: process.env.JWT_SECRET,
 
     db: {
@@ -50,11 +54,26 @@ export const env={
         name: process.env.DB_NAME,
         host: process.env.DB_HOST,
         port: Number(process.env.DB_PORT), 
+        ssl: process.env.DB_SSL === 'true',
+        sslRejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
+        sslCaFile: process.env.DB_SSL_CA_FILE || null,
+        poolMax: positiveInteger(process.env.DB_POOL_MAX, 25),
     },
 
     redis: {
         host: process.env.REDIS_HOST,
         port: Number(process.env.REDIS_PORT),
+        tls: process.env.REDIS_TLS === 'true',
+        username: process.env.REDIS_USERNAME || undefined,
+        password: process.env.REDIS_PASSWORD || undefined,
+    },
+    smtp: {
+        host: process.env.SMTP_HOST || null,
+        port: positiveInteger(process.env.SMTP_PORT, 587),
+        secure: process.env.SMTP_SECURE === 'true',
+        user: process.env.SMTP_USER || null,
+        password: process.env.SMTP_PASSWORD || null,
+        from: process.env.SMTP_FROM || 'Pulse Notifications <no-reply@localhost>',
     },
     outbox: {
         pollIntervalMs: Number(process.env.OUTBOX_POLL_INTERVAL_MS || 1000),

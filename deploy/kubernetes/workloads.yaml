@@ -1,0 +1,229 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pulse-api
+  namespace: pulse
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: pulse-api
+  template:
+    metadata:
+      labels:
+        app: pulse-api
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: ghcr.io/your-org/pulse-notification-system:RELEASE_TAG
+          imagePullPolicy: IfNotPresent
+          command: ["node", "src/server.js"]
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: pulse-production-config
+          env:
+            - name: APP_ROLE
+              value: api
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: DB_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: JWT_SECRET
+            - name: METRICS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: METRICS_TOKEN
+            - name: REDIS_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: REDIS_USERNAME
+                  optional: true
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: REDIS_PASSWORD
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: postgres-ca
+              mountPath: /etc/postgres-ca
+              readOnly: true
+      volumes:
+        - name: postgres-ca
+          secret:
+            secretName: pulse-postgres-ca
+            optional: true
+            items:
+              - key: ca.crt
+                path: ca.crt
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pulse-outbox-worker
+  namespace: pulse
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: pulse-outbox-worker
+  template:
+    metadata:
+      labels:
+        app: pulse-outbox-worker
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: ghcr.io/your-org/pulse-notification-system:RELEASE_TAG
+          imagePullPolicy: IfNotPresent
+          command: ["node", "src/worker.js"]
+          ports:
+            - name: health
+              containerPort: 3001
+          envFrom:
+            - configMapRef:
+                name: pulse-production-config
+          env:
+            - name: APP_ROLE
+              value: worker
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: DB_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: JWT_SECRET
+            - name: METRICS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: METRICS_TOKEN
+            - name: REDIS_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: REDIS_USERNAME
+                  optional: true
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: REDIS_PASSWORD
+                  optional: true
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: SMTP_USER
+                  optional: true
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: SMTP_PASSWORD
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            periodSeconds: 10
+            timeoutSeconds: 4
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: postgres-ca
+              mountPath: /etc/postgres-ca
+              readOnly: true
+      volumes:
+        - name: postgres-ca
+          secret:
+            secretName: pulse-postgres-ca
+            optional: true
+            items:
+              - key: ca.crt
+                path: ca.crt

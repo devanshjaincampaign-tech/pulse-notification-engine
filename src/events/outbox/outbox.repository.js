@@ -29,6 +29,30 @@ export async function getOutboxStats(client = pool) {
   }));
 }
 
+export async function listDeadLetterEvents({ limit = 50, client = pool } = {}) {
+  const { rows } = await client.query(
+    `SELECT event_id, event_type, occurred_at, attempts, dead_lettered_at
+     FROM event_outbox
+     WHERE status = 'dead_letter'
+     ORDER BY dead_lettered_at ASC, event_id ASC
+     LIMIT $1`,
+    [limit]
+  );
+  return rows;
+}
+
+export async function replayDeadLetterEvent(eventId, client = pool) {
+  const { rowCount } = await client.query(
+    `UPDATE event_outbox
+     SET status = 'pending', attempts = 0, available_at = NOW(),
+         locked_at = NULL, locked_by = NULL, last_error = NULL,
+         processed_at = NULL, dead_lettered_at = NULL
+     WHERE event_id = $1 AND status = 'dead_letter'`,
+    [eventId]
+  );
+  return rowCount === 1;
+}
+
 export async function claimEvents({ workerId, limit = 10, leaseMs = 60000 } = {}) {
   const client = await pool.connect();
   try {

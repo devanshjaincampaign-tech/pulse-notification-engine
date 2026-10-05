@@ -2,9 +2,12 @@ import { createClient } from "redis";
 import { env } from './env.js';
 
 export const redisClient = createClient({
+    username: env.redis.username,
+    password: env.redis.password,
     socket:{
         host: env.redis.host,
-        port: env.redis.port
+        port: env.redis.port,
+        ...(env.redis.tls ? { tls: true } : {}),
     },
 });
 
@@ -25,9 +28,12 @@ Redis is an accelerator/real-time layer on top of that truth — if it's gone, s
 /*This is called graceful degradation — remember it appeared in our roadmap under Section 11 (Reliability). This Redis error handler is our very first real, concrete example of it — not just a definition, an actual line of code embodying the principle.*/
 
 export const redisSubscriber = createClient({
+    username: env.redis.username,
+    password: env.redis.password,
     socket:{
         host: env.redis.host,
         port: env.redis.port,
+        ...(env.redis.tls ? { tls: true } : {}),
     },
 });
 

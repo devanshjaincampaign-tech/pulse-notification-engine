@@ -6,6 +6,6 @@ export function buildPostLikedNotification(event) {
     type: event.eventType,
     title: 'New Like',
     message: `Someone liked your post`,
-    metadata: event.payload,
+    metadata: { postId: event.payload.postId },
   };
 }

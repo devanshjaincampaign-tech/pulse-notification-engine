@@ -6,6 +6,6 @@ export function buildUserFollowedNotification(event) {
     type: event.eventType,
     title: 'New Follower',
     message: 'Someone started following you',
-    metadata: event.payload,
+    metadata: {},
   };
 }

@@ -10,6 +10,9 @@ The notification path uses a PostgreSQL-backed durable event outbox. Redis
 remains the real-time delivery fan-out layer, while PostgreSQL provides the
 recoverable source of truth for events waiting to be processed.
 
+> **Demo / screenshots:** Add an architecture screenshot, API example, or
+> short delivery-flow recording here when available.
+
 ## Table of contents
 
 - [What Pulse does](#what-pulse-does)
@@ -21,15 +24,18 @@ recoverable source of truth for events waiting to be processed.
 - [Getting started](#getting-started)
 - [Configuration](#configuration)
 - [API reference](#api-reference)
+- [OpenAPI contract](./openapi.json)
 - [WebSocket reference](#websocket-reference)
 - [Event model](#event-model)
 - [Database schema](#database-schema)
 - [Testing and CI](#testing-and-ci)
 - [Operational guidance](#operational-guidance)
+- [Production deployment and runbook](./ops/production-runbook.md)
 - [Security](#security)
 - [Remaining work](#remaining-work)
 - [Known limitations](#known-limitations)
 - [License](#license)
+- [Contributing](#contributing)
 
 ## What Pulse does
 
@@ -39,7 +45,7 @@ Pulse provides:
 2. Short-lived JWT access tokens and rotating, persisted refresh tokens.
 3. A durable PostgreSQL notification feed and event outbox with ownership
    checks, retries, dead-letter tracking, and idempotent processing.
-4. Per-user notification preferences.
+4. Per-user in-app and email preferences with configurable SMTP delivery.
 5. Real-time delivery to every connected device for a user.
 6. Cross-instance delivery through Redis Pub/Sub.
 7. Reconnection synchronization for unread notifications.
@@ -180,8 +186,13 @@ lost event will eventually be replayed.
 
 ### Events and real-time delivery
 
-- `POST_LIKED` consumer and notification handler
-- `USER_FOLLOWED` consumer and notification handler
+- Validated event envelopes and payload-specific Zod schemas for all supported
+  event types
+- Notification builders and consumers for likes, follows, comments, messages,
+  order status, completed payments, and security alerts
+- PostgreSQL-backed outbox with concurrent-safe claims, retry backoff,
+  dead-letter tracking, and operator replay
+- Optional preference-controlled email delivery through SMTP
 - development-only test event routes
 - authenticated Socket.IO handshakes
 - per-IP connection and inbound-message rate limits, plus a bounded packet size
@@ -189,15 +200,11 @@ lost event will eventually be replayed.
 - Redis Pub/Sub fan-out between application instances
 - unread notification sync on connection and reconnection
 
-The following event types are defined but do not yet have consumers:
-`COMMENT_CREATED`, `MESSAGE_RECEIVED`, `ORDER_STATUS_CHANGED`,
-`PAYMENT_COMPLETED`, and `SECURITY_ALERT`.
-
 ## Technology stack
 
 | Technology | Role |
 |---|---|
-| Node.js 20 | Runtime and container base |
+| Node.js 20.13+ | Runtime and container base |
 | Express 5 | HTTP API and middleware pipeline |
 | PostgreSQL 16 | Users, refresh tokens, notifications, preferences, and migrations |
 | Redis 7 | Pub/Sub delivery fan-out and shared authentication rate limits |
@@ -206,8 +213,11 @@ The following event types are defined but do not yet have consumers:
 | bcrypt | Password hashing |
 | Zod | Runtime request validation |
 | Pino | Structured application logging |
+| Nodemailer | Optional SMTP notification delivery |
 | Helmet and CORS | HTTP security and cross-origin controls |
 | Docker Compose | Local multi-service development |
+| Kubernetes | Production-oriented API, worker, and migration manifests |
+| Prometheus | Metrics scrape configuration and alert rule examples |
 | Vitest | Unit, integration, and WebSocket tests |
 | GitHub Actions | Continuous integration |
 
@@ -216,17 +226,30 @@ The following event types are defined but do not yet have consumers:
 ```text
 pulse-notification-system/
 ├── .env.example                         # Development configuration template
-├── .env.test                            # Test configuration
+├── .env.test.example                    # Safe template for local test configuration
 ├── .github/
 │   └── workflows/
 │       └── test.yml                     # PostgreSQL, Redis, and npm test CI job
 ├── Dockerfile                            # Non-root production image
 ├── docker-compose.yml                    # Two app instances plus databases/Redis
+├── openapi.json                          # OpenAPI 3.1 HTTP contract
 ├── package.json                          # Scripts and dependencies
+├── deploy/kubernetes/                     # Base config, API/worker, migration Job
+├── monitoring/prometheus/                 # Scrape example and alert rules
+├── ops/
+│   ├── production-runbook.md              # Deploy, migrate, recover, and operate
+│   ├── sql/                               # Runtime and outbox operator grants
+│   └── scripts/                           # PostgreSQL backup/restore, K8s rollback
+├── scripts/
+│   ├── load-test.js                       # Guarded, bounded HTTP load baseline
+│   └── multi-instance-smoke.js            # Redis cross-instance delivery check
 ├── vitest.config.js                     # Node test configuration
 ├── src/
 │   ├── app.js                           # Express app, middleware, and route mounting
 │   ├── server.js                        # Startup, dependencies, WebSocket, shutdown
+│   ├── worker.js                        # Standalone outbox worker with health/metrics
+│   ├── cli/outbox.js                    # Guarded dead-letter list/replay commands
+│   ├── email/                           # SMTP sender and email escaping
 │   ├── config/
 │   │   ├── cors.js                      # CORS policy
 │   │   ├── database.js                  # PostgreSQL pool
@@ -249,7 +272,7 @@ pulse-notification-system/
 │   │   ├── createEvent.js               # Event envelope factory
 │   │   ├── redisChannel.js              # Redis notification channel
 │   │   ├── event.schema.js              # Event and producer request schemas
-│   │   └── outbox/                       # Durable worker, claiming, retry, dead letter
+│   │   ├── outbox/                      # Durable worker, claims, retry, dead letter
 │   │   ├── consumers/                   # Event-to-notification consumers
 │   │   ├── handlers/                    # Notification builders by event type
 │   │   └── producers/                   # Development test producers and routes
@@ -261,7 +284,6 @@ pulse-notification-system/
 │   │   ├── index.js                     # Socket.IO setup, Redis subscription, sync
 │   │   ├── socketAuth.js                # Socket JWT middleware
 │   │   └── socketEmitter.js             # Local room delivery and Redis publishing
-│   ├── socketAuth.js                    # Legacy/compatibility socket auth module
 │   ├── utils/
 │   │   ├── jwt.js                       # JWT signing and verification
 │   │   └── refreshToken.js              # Refresh-token generation and hashing
@@ -274,7 +296,7 @@ pulse-notification-system/
 ### Prerequisites
 
 - Docker Desktop with Docker Compose
-- Node.js 20 or newer
+- Node.js 20.13 or newer
 - npm
 - Git
 
@@ -359,10 +381,25 @@ variable is missing.
 | `DB_NAME` | Yes | `pulse_notifications` | Database name. |
 | `DB_HOST` | Yes | `postgres` | PostgreSQL hostname. |
 | `DB_PORT` | Yes | `5432` | PostgreSQL port. |
+| `DB_SSL` | No | `false` | Enable TLS for PostgreSQL. |
+| `DB_SSL_REJECT_UNAUTHORIZED` | No | `true` | Verify PostgreSQL's TLS certificate; do not disable in production. |
+| `DB_SSL_CA_FILE` | No | — | Optional path to a trusted PostgreSQL CA certificate. |
 | `REDIS_HOST` | Yes | `redis` | Redis hostname. |
 | `REDIS_PORT` | Yes | `6379` | Redis port. |
+| `REDIS_TLS` | No | `false` | Enable TLS for Redis. |
+| `REDIS_USERNAME` | No | — | Redis ACL username. |
+| `REDIS_PASSWORD` | No | — | Redis password; use secret management in production. |
 | `JWT_SECRET` | Yes | change-me | Secret used to sign access tokens. |
-| `CORS_ORIGIN` | No | `https://app.example.com` | Allowed frontend origin in production. |
+| `CORS_ORIGIN` | No | `https://app.example.com` | Allowed frontend origin in production. Missing configuration logs a warning; browser cross-origin access will not be enabled. |
+| `SMTP_HOST` | No | `smtp.example.com` | SMTP server; required only when a user enables email notifications. |
+| `SMTP_PORT` | No | `587` | SMTP service port. |
+| `SMTP_SECURE` | No | `false` | Use implicit TLS (normally true for port 465). |
+| `SMTP_USER` | No | — | SMTP authentication username. |
+| `SMTP_PASSWORD` | No | — | SMTP authentication password; supply through secret management in production. |
+| `SMTP_FROM` | No | `Pulse Notifications <no-reply@example.com>` | Sender identity used for notification email. |
+| `APP_ROLE` | No | `all` | Set to `api` to keep outbox processing out of an API process. |
+| `WORKER_HEALTH_PORT` | No | `3001` | Standalone worker health and metrics port. |
+| `DB_POOL_MAX` | No | `25` | PostgreSQL connection pool size per process. |
 | `OUTBOX_POLL_INTERVAL_MS` | No | `1000` | Delay between durable outbox worker polls. |
 | `OUTBOX_BATCH_SIZE` | No | `20` | Maximum events claimed in one poll. |
 | `OUTBOX_MAX_ATTEMPTS` | No | `5` | Attempts before an event is dead-lettered. |
@@ -429,6 +466,7 @@ All notification routes require authentication.
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/?limit=20&offset=0` | Return bounded, paginated notifications. |
+| `GET` | `/cursor?limit=20&cursor=<opaque-cursor>` | Return a stable keyset-paginated page with `notifications`, `hasMore`, and `nextCursor`. Omit `cursor` for the first page. |
 | `GET` | `/unread-count` | Return the current user's unread count. |
 | `PATCH` | `/:id/read` | Mark one owned notification as read. |
 | `PATCH` | `/read-all` | Mark all notifications as read. |
@@ -446,7 +484,10 @@ All preference routes require authentication.
 | `GET` | `/` | List the current user's preferences. |
 | `PATCH` | `/:type` | Update in-app and email settings for one event type. |
 
-The event type is checked against the shared event-type definition.
+The event type is checked against the shared event-type definition. `emailEnabled`
+controls delivery through the configured SMTP transport. Configure SMTP before
+enabling email; opted-in email attempts without SMTP configuration fail and are
+retried by the outbox, then dead-lettered if retries are exhausted.
 
 ### Development test events — `/api/test-events`
 
@@ -515,18 +556,39 @@ Defined event types:
 
 | Event type | Consumer | Current status |
 |---|---|---|
-| `POST_LIKED` | Yes | Wired to notification creation and delivery |
-| `USER_FOLLOWED` | Yes | Wired to notification creation and delivery |
-| `COMMENT_CREATED` | No | Constant only |
-| `MESSAGE_RECEIVED` | No | Constant only |
-| `ORDER_STATUS_CHANGED` | No | Constant only |
-| `PAYMENT_COMPLETED` | No | Constant only |
-| `SECURITY_ALERT` | No | Constant only |
+| `POST_LIKED` | Yes | In-app and preference-enabled email delivery |
+| `USER_FOLLOWED` | Yes | In-app and preference-enabled email delivery |
+| `COMMENT_CREATED` | Yes | In-app and preference-enabled email delivery |
+| `MESSAGE_RECEIVED` | Yes | In-app and preference-enabled email delivery |
+| `ORDER_STATUS_CHANGED` | Yes | In-app and preference-enabled email delivery |
+| `PAYMENT_COMPLETED` | Yes | In-app and preference-enabled email delivery |
+| `SECURITY_ALERT` | Yes | In-app and preference-enabled email delivery |
+
+Required payload fields are event-specific:
+
+| Event type | Required payload | Optional payload |
+|---|---|---|
+| `POST_LIKED` | `postId` | — |
+| `USER_FOLLOWED` | — | — |
+| `COMMENT_CREATED` | `postId` | `commentId` |
+| `MESSAGE_RECEIVED` | `conversationId` | `messageId` |
+| `ORDER_STATUS_CHANGED` | `orderId`, `status` | `previousStatus` |
+| `PAYMENT_COMPLETED` | `paymentId`, positive `amount`, three-letter uppercase `currency` | `orderId` |
+| `SECURITY_ALERT` | `alertType` | — |
+
+Notification builders copy only allowlisted identifiers/status/payment fields
+into metadata; they do not include arbitrary event payload content such as
+comment or message text.
 
 `eventId` is generated with `randomUUID()` and stored as a unique database
 value. A duplicate event is ignored by the outbox insert and by notification
-creation. Event envelopes and development producer bodies are validated with
-Zod before persistence.
+creation. Event envelopes, type-specific payloads, and development producer
+bodies are validated with Zod before processing.
+
+Email is opt-in per event type through `PATCH /api/preferences/:type`. With no
+preference row, in-app delivery defaults to enabled and email defaults to
+disabled. When enabled, SMTP settings must be configured; SMTP failures remain
+retryable through the outbox and eventually become dead-letter events.
 
 ## Database schema
 
@@ -596,13 +658,19 @@ Important indexes include the notification feed index on
 Start the test dependencies:
 
 ```bash
+cp .env.test.example .env.test
 docker compose up -d postgres_test redis
 ```
+
+On Windows PowerShell, use `Copy-Item .env.test.example .env.test`. Keep the
+test database credentials aligned with `.env`, which Compose uses to create
+the `postgres_test` service. The test migration runner requires the database
+name to end in `_test` and refuses to migrate another database.
 
 Then run:
 
 ```bash
-npm install
+npm ci
 npm test
 ```
 
@@ -616,7 +684,7 @@ Useful scripts:
 | Command | Purpose |
 |---|---|
 | `npm run start` | Start the server |
-| `npm run dev` | Start with Nodemon |
+| `npm run dev` | Start with Node's built-in file watcher |
 | `npm run migrate` | Apply development migrations |
 | `npm run migrate:test` | Apply test migrations |
 | `npm test` | Migrate the test database and run Vitest |
@@ -628,9 +696,43 @@ Useful scripts:
 - notification service behavior
 - PostgreSQL repository behavior and constraints
 - Socket.IO authentication and delivery behavior
+- all event payload schemas and notification builders
+- SMTP rendering, configuration, and delivery failure behavior
+- outbox retry/dead-letter operations and CLI argument guards
+- OpenAPI routes and cursor pagination contract
 
 GitHub Actions runs the test job on pushes and pull requests to `main` with
 fresh PostgreSQL and Redis service containers.
+
+The machine-readable [OpenAPI 3.1 contract](./openapi.json) documents API
+paths, authentication, requests, and cursor pagination. A contract test checks
+that the route surface and pagination shape stay represented in that file.
+
+### Repeatable performance and multi-instance checks
+
+Start both API instances and dependencies, then run:
+
+```bash
+npm run test:multi-instance
+```
+
+The smoke test registers unique test accounts, connects to instance 1, emits a
+`USER_FOLLOWED` event through instance 2, and requires the socket on instance 1
+to receive it. It defaults to localhost and refuses remote hosts unless
+`PULSE_SMOKE_ALLOW_REMOTE=true` is explicitly set. Run it against a disposable
+database because it creates test users and notifications.
+
+For a bounded GET-only HTTP baseline:
+
+```bash
+npm run test:load
+```
+
+Set `LOAD_TEST_URL`, `LOAD_TEST_SECONDS`, `LOAD_TEST_CONNECTIONS`, and
+optionally `LOAD_TEST_TOKEN` to customize the target. The default endpoint is
+`/health`; use a read-only target in a controlled environment. Remote targets
+require `LOAD_TEST_ALLOW_REMOTE=true`, and production requires the additional
+`LOAD_TEST_ALLOW_PRODUCTION=true` opt-in.
 
 ## Operational guidance
 
@@ -647,10 +749,42 @@ Connect a client to port `3000`, then call a test-event endpoint on port
 message across both instances, allowing the socket connected to port `3000` to
 receive it.
 
+### Production deployment and recovery
+
+The Kubernetes manifests separate API replicas, outbox worker replicas, and a
+one-shot migration Job. They target external PostgreSQL and Redis and contain
+example endpoints only. Configure secrets through an external secret manager,
+set SMTP configuration on the worker before enabling email preferences, and
+replace the image references before applying anything.
+
+The [production runbook](./ops/production-runbook.md) documents the exact
+migration/release order, runtime/migration/operator database roles, Prometheus
+scraping and alerts, dead-letter inspection/replay, PostgreSQL backup/restore,
+and Kubernetes rollback. Treat the manifests and scripts as templates until
+they have been validated against your actual cluster and tested recovery
+environment.
+
+The standalone worker exposes `/healthz`, `/readyz`, and `/metrics` on
+`WORKER_HEALTH_PORT` (default `3001`). Its readiness endpoint requires healthy
+PostgreSQL and Redis plus a recent successful outbox poll. Metrics endpoints
+must remain private and use `METRICS_TOKEN` in production.
+
+Inspect or replay dead-letter events from an operator environment with the
+least-privilege database role:
+
+```bash
+npm run outbox -- list --limit 100
+npm run outbox -- replay <event-uuid> --confirm
+```
+
+Replay is an explicit operator action and may repeat external side effects such
+as SMTP delivery. Review the original failure before replay.
+
 ### Shutdown behavior
 
-The server handles `SIGTERM` and `SIGINT`, closes the HTTP server, PostgreSQL
-pool, and Redis clients, and forces exit after a ten-second timeout.
+The server handles `SIGTERM` and `SIGINT`, disconnects Socket.IO clients,
+closes the HTTP server, outbox worker, PostgreSQL pool, and Redis clients, and
+forces exit after a ten-second timeout.
 
 ### Logging
 
@@ -674,7 +808,7 @@ Implemented baseline protections:
 - Zod validation on supported API schemas
 - Redis-backed authentication rate limiting
 - Helmet security headers
-- configurable CORS with production checks
+- configurable CORS; production logs a warning if `CORS_ORIGIN` is unset
 - ten-kilobyte JSON request limit
 - centralized errors without internal-error details in responses
 - non-root application container
@@ -689,53 +823,55 @@ protection before using them for authentication.
 
 ## Remaining work
 
-The P0 reliability and P1 security/operations work is implemented. Remaining
-work is now primarily product expansion, distributed observability, and
-production operations.
+Core P0 reliability, P1 security/operations, and the planned P2 feature work
+are implemented in the repository. Before a real production launch, operators
+still need to supply external infrastructure and validate it in their own
+environment:
 
-### Reliability follow-ups
-
-- Add an administrative workflow to inspect and replay dead-letter events.
-- Configure alert rules for pending, processing, and dead-letter outbox
-  thresholds, as well as notification and WebSocket failures.
-- Consider a separate worker deployment when API and event-processing scaling
-  requirements diverge.
-
-### Security and operations
-
-Implemented P1 security and operations capabilities include transactional
-refresh rotation, session listing and revocation, session cleanup and replay
-detection, session-bound access-token checks, WebSocket handshake/connection/
-message limits, Redis Pub/Sub validation, liveness/readiness endpoints, and
-Prometheus metrics. Metrics and WebSocket IP limits are process-local; configure
-scraping and alerting separately. Legacy access tokens without a session claim
-remain valid until their short expiry.
-
-### P2 — Product completeness
-
-- Implement handlers and tests for `SECURITY_ALERT`,
-  `COMMENT_CREATED`, `MESSAGE_RECEIVED`, `ORDER_STATUS_CHANGED`, and
-  `PAYMENT_COMPLETED`, or remove unsupported constants.
-- Add email or other out-of-band notification delivery if the `email_enabled`
-  preference is intended to have behavior.
-- Add cursor pagination for large notification feeds.
-- Add API/OpenAPI documentation and contract tests.
-- Add production deployment manifests, secret management, backups, and
-  rollback guidance.
-- Run and document repeatable load, failure-injection, and multi-instance
-  chaos tests.
+- Replace example images, service endpoints, CORS origin, and SMTP settings in
+  the deployment configuration; provision external secrets and least-privilege
+  database roles.
+- Run the documented migration and workload rollout against the target cluster,
+  database, Redis, SMTP provider, and monitoring stack.
+- Exercise backup restoration and application rollback against disposable
+  production-like infrastructure before relying on the recovery procedures.
+- Establish operational thresholds, on-call ownership, retention policies, and
+  capacity targets for the sample Prometheus alerts and load results.
+- Decide whether to add distributed tracing, global WebSocket rate limits, and
+  automated cleanup/retention policies as product scale and requirements grow.
 
 ## Known limitations
 
 - Redis Pub/Sub is not replayable.
-- Notification delivery is best effort after database persistence.
+- Socket delivery is best effort after notification persistence; REST is the
+  durable retrieval path.
 - Redis is required for startup and authentication rate limiting.
 - Connection sync returns up to 50 unread notifications.
 - Metrics and WebSocket IP limits are per-process, not shared across instances.
+- The Prometheus scrape file is an example using Kubernetes Service targets;
+  configure pod-level service discovery or a PodMonitor to collect every
+  replica's process-local metrics.
 - There is no OpenTelemetry exporter or distributed tracing backend.
-- There is no built-in email sender despite storing email preferences.
-- Load and chaos testing are not part of the repository's automated CI job.
+- SMTP email is optional and requires external provider credentials and
+  deliverability configuration.
+- Load and cross-instance scripts are opt-in local checks, not part of CI;
+  database integration tests also require PostgreSQL and Redis services.
+- Kubernetes manifests, sample alert rules, and operational scripts are
+  templates and have not been validated against a live production environment.
+- Published outbox rows do not yet have an automatic archival or retention
+  policy; define one before long-running production use.
 
 ## License
 
 ISC
+
+## Contributing
+
+1. Create a focused branch for your change.
+2. Add or update tests for behavior changes.
+3. Run `npm test` and `npm audit` before opening a pull request.
+4. Include operational or configuration changes in the README and runbook.
+
+Do not commit `.env`, `.env.test`, credentials, generated build artifacts, or
+real deployment secrets. The local integration suite requires PostgreSQL and
+Redis; describe any checks you could not run in the pull request.

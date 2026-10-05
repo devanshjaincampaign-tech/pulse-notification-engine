@@ -1,0 +1,69 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pulse-migrate
+  namespace: pulse
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: pulse-migrate
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: ghcr.io/your-org/pulse-notification-system:RELEASE_TAG
+          imagePullPolicy: IfNotPresent
+          command: ["node", "src/db/migrate.js"]
+          envFrom:
+            - configMapRef:
+                name: pulse-production-config
+          env:
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: DB_MIGRATION_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: DB_MIGRATION_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-production-secrets
+                  key: JWT_SECRET
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: postgres-ca
+              mountPath: /etc/postgres-ca
+              readOnly: true
+      volumes:
+        - name: postgres-ca
+          secret:
+            secretName: pulse-postgres-ca
+            optional: true
+            items:
+              - key: ca.crt
+                path: ca.crt

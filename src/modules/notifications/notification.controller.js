@@ -1,5 +1,6 @@
 import {
   listNotifications,
+  listNotificationsByCursor,
   getUnreadCountForUser,
   markNotificationAsRead,
   markAllNotificationsAsRead,
@@ -12,6 +13,15 @@ export async function listNotificationsController(req, res, next) {
 
     const notifications = await listNotifications(req.user.userId, { limit, offset });
     res.status(200).json(notifications);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listNotificationsByCursorController(req, res, next) {
+  try {
+    const result = await listNotificationsByCursor(req.user.userId, req.validated.query);
+    res.status(200).json(result);
   } catch (err) {
     next(err);
   }

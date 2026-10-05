@@ -3,8 +3,21 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const envFile = process.argv[2] === 'test' ? '.env.test' : '.env';
-dotenv.config({ path: envFile });
+const isTestMode = process.argv[2] === 'test';
+const envFile = isTestMode ? '.env.test' : '.env';
+if (isTestMode && process.env.CI !== 'true' && !fs.existsSync(envFile)) {
+  console.error('Missing .env.test; copy .env.test.example and configure the isolated test database.');
+  process.exit(1);
+}
+dotenv.config({
+  path: envFile,
+  override: isTestMode && process.env.CI !== 'true',
+});
+
+if (isTestMode && !/(^|_)test$/i.test(process.env.DB_NAME || '')) {
+  console.error('Test migrations require DB_NAME to end in "_test" to protect non-test databases.');
+  process.exit(1);
+}
 
 const { pool } = await import('../config/database.js');
 

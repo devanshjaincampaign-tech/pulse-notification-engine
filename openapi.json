@@ -1,0 +1,350 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Pulse Notification Engine API",
+    "version": "1.0.0",
+    "description": "REST API for authentication, notification feeds, preferences, health, and metrics."
+  },
+  "servers": [
+    { "url": "http://localhost:3000", "description": "Local development" }
+  ],
+  "tags": [
+    { "name": "Health" },
+    { "name": "Authentication" },
+    { "name": "Notifications" },
+    { "name": "Preferences" },
+    { "name": "Development events", "description": "Available only when NODE_ENV is not production." },
+    { "name": "Observability" }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Liveness check",
+        "responses": { "200": { "description": "Process is alive." } }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Dependency readiness check",
+        "responses": {
+          "200": { "description": "PostgreSQL and Redis are reachable." },
+          "503": { "description": "One or more dependencies are unavailable." }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": ["Observability"],
+        "summary": "Prometheus metrics",
+        "description": "Production access requires METRICS_TOKEN as a Bearer token.",
+        "security": [{ "metricsBearer": [] }],
+        "responses": {
+          "200": { "description": "Prometheus text exposition format." },
+          "401": { "description": "Metrics token is missing or invalid." },
+          "404": { "description": "Metrics endpoint is hidden in production." }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Register a user and create a session",
+        "requestBody": { "$ref": "#/components/requestBodies/Register" },
+        "responses": {
+          "201": { "description": "User and token pair created." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Authenticate and create a device session",
+        "requestBody": { "$ref": "#/components/requestBodies/Login" },
+        "responses": {
+          "200": { "description": "Authenticated user and token pair." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Rotate a refresh token",
+        "requestBody": { "$ref": "#/components/requestBodies/Refresh" },
+        "responses": {
+          "200": { "description": "Replacement access and refresh tokens." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": ["Authentication"],
+        "summary": "Get current authenticated user ID",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Authenticated user identity." },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/auth/sessions": {
+      "get": {
+        "tags": ["Authentication"],
+        "summary": "List active sessions",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Active sessions for the user." } }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Revoke current session",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Session revoked." } }
+      }
+    },
+    "/api/auth/logout-all": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Revoke all active sessions",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "All sessions revoked." } }
+      }
+    },
+    "/api/auth/sessions/{id}": {
+      "delete": {
+        "tags": ["Authentication"],
+        "summary": "Revoke an owned session",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/SessionId" }],
+        "responses": {
+          "204": { "description": "Session revoked." },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "tags": ["Notifications"],
+        "summary": "List notifications using offset pagination",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+        ],
+        "responses": { "200": { "description": "Notification array." } }
+      }
+    },
+    "/api/notifications/cursor": {
+      "get": {
+        "tags": ["Notifications"],
+        "summary": "List notifications using cursor pagination",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } },
+          { "name": "cursor", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "$ref": "#/components/responses/CursorNotificationPage" } }
+      }
+    },
+    "/api/notifications/unread-count": {
+      "get": {
+        "tags": ["Notifications"],
+        "summary": "Get unread notification count",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Object containing unread count." } }
+      }
+    },
+    "/api/notifications/read-all": {
+      "patch": {
+        "tags": ["Notifications"],
+        "summary": "Mark all notifications read",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Success status." } }
+      }
+    },
+    "/api/notifications/{id}/read": {
+      "patch": {
+        "tags": ["Notifications"],
+        "summary": "Mark one notification read",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/NotificationId" }],
+        "responses": {
+          "200": { "description": "Updated notification read state." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/notifications/{id}": {
+      "delete": {
+        "tags": ["Notifications"],
+        "summary": "Delete one notification",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/NotificationId" }],
+        "responses": {
+          "200": { "description": "Success status." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/preferences": {
+      "get": {
+        "tags": ["Preferences"],
+        "summary": "List notification preferences",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Preference list." } }
+      }
+    },
+    "/api/preferences/{type}": {
+      "patch": {
+        "tags": ["Preferences"],
+        "summary": "Update a notification preference",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "type", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "$ref": "#/components/requestBodies/Preference" },
+        "responses": {
+          "200": { "description": "Updated preference." },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/api/test-events/post-liked": {
+      "post": {
+        "tags": ["Development events"],
+        "summary": "Emit a test post-liked event",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/PostLikedEvent" },
+        "responses": { "200": { "description": "Event persisted to outbox." } }
+      }
+    },
+    "/api/test-events/user-followed": {
+      "post": {
+        "tags": ["Development events"],
+        "summary": "Emit a test user-followed event",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/UserFollowedEvent" },
+        "responses": { "200": { "description": "Event persisted to outbox." } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" },
+      "metricsBearer": { "type": "http", "scheme": "bearer" }
+    },
+    "parameters": {
+      "SessionId": {
+        "name": "id", "in": "path", "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "NotificationId": {
+        "name": "id", "in": "path", "required": true,
+        "schema": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object", "required": ["error"],
+        "properties": { "error": { "type": "string" } }
+      },
+      "TokenPair": {
+        "type": "object", "required": ["accessToken", "refreshToken"],
+        "properties": {
+          "accessToken": { "type": "string" },
+          "refreshToken": { "type": "string" }
+        }
+      },
+      "CursorNotificationPage": {
+        "type": "object", "required": ["notifications", "hasMore", "nextCursor"],
+        "properties": {
+          "notifications": { "type": "array", "items": { "type": "object" } },
+          "hasMore": { "type": "boolean" },
+          "nextCursor": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "requestBodies": {
+      "Register": {
+        "required": true, "content": { "application/json": { "schema": {
+          "type": "object", "required": ["username", "email", "password"],
+          "properties": {
+            "username": { "type": "string", "minLength": 3, "maxLength": 50 },
+            "email": { "type": "string", "format": "email" },
+            "password": { "type": "string", "minLength": 8 }
+          }
+        } } }
+      },
+      "Login": {
+        "required": true, "content": { "application/json": { "schema": {
+          "type": "object", "required": ["email", "password"],
+          "properties": {
+            "email": { "type": "string", "format": "email" },
+            "password": { "type": "string", "minLength": 1 },
+            "deviceName": { "type": "string", "maxLength": 100 }
+          }
+        } } }
+      },
+      "Refresh": {
+        "required": true, "content": { "application/json": { "schema": {
+          "type": "object", "required": ["refreshToken"],
+          "properties": { "refreshToken": { "type": "string", "minLength": 1 } }
+        } } }
+      },
+      "Preference": {
+        "required": true, "content": { "application/json": { "schema": {
+          "type": "object", "required": ["inAppEnabled", "emailEnabled"],
+          "properties": {
+            "inAppEnabled": { "type": "boolean" },
+            "emailEnabled": { "type": "boolean" }
+          }
+        } } }
+      },
+      "PostLikedEvent": {
+        "required": true, "content": { "application/json": { "schema": {
+          "type": "object", "required": ["targetUserId", "postId"],
+          "properties": {
+            "targetUserId": { "type": "integer", "minimum": 1 },
+            "postId": { "type": "string", "minLength": 1 }
+          }
+        } } }
+      },
+      "UserFollowedEvent": {
+        "required": true, "content": { "application/json": { "schema": {
+          "type": "object", "required": ["targetUserId"],
+          "properties": { "targetUserId": { "type": "integer", "minimum": 1 } }
+        } } }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid input.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Unauthorized": {
+        "description": "Authentication failed.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "NotFound": {
+        "description": "Resource not found.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Conflict": {
+        "description": "Resource conflict.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "CursorNotificationPage": {
+        "description": "Cursor-paginated notification feed.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CursorNotificationPage" } } }
+      }
+    }
+  }
+}

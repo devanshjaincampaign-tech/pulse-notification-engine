@@ -1,0 +1,27 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+rule_files:
+  - alerts.yml
+
+scrape_configs:
+  - job_name: pulse-api
+    metrics_path: /metrics
+    scheme: http
+    static_configs:
+      - targets: ["pulse-api.pulse.svc.cluster.local:3000"]
+        labels:
+          service: pulse-notification-system
+          role: api
+    bearer_token_file: /etc/prometheus/secrets/pulse-metrics/METRICS_TOKEN
+
+  - job_name: pulse-outbox-worker
+    metrics_path: /metrics
+    scheme: http
+    static_configs:
+      - targets: ["pulse-outbox-worker.pulse.svc.cluster.local:3001"]
+        labels:
+          service: pulse-notification-system
+          role: outbox-worker
+    bearer_token_file: /etc/prometheus/secrets/pulse-metrics/METRICS_TOKEN

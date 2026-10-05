@@ -1,5 +1,6 @@
 import {
   getNotificationsForUser,
+  getNotificationsForUserByCursor,
   getUnreadCount,
   markAsRead,
   markAllAsRead,
@@ -9,6 +10,10 @@ import { NotFoundError } from '../../common/errors/index.js';
 
 export async function listNotifications(recipientId, { limit, offset } = {}) {
   return getNotificationsForUser(recipientId, { limit, offset });
+}
+
+export async function listNotificationsByCursor(recipientId, { limit, cursor } = {}) {
+  return getNotificationsForUserByCursor(recipientId, { limit, cursor });
 }
 
 export async function getUnreadCountForUser(recipientId) {

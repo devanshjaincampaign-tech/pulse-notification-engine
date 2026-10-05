@@ -71,6 +71,34 @@ describe('authentication session lifecycle', () => {
       .rejects.toThrow('Email already registered');
   });
 
+  it('maps a concurrent email uniqueness conflict to a client conflict', async () => {
+    findUserByEmail.mockResolvedValue(null);
+    createUser.mockRejectedValue(Object.assign(new Error('duplicate email'), {
+      code: '23505',
+      constraint: 'users_email_key',
+    }));
+
+    await expect(registerUser({
+      username: 'newuser',
+      email: 'new@example.com',
+      password: 'password123',
+    })).rejects.toThrow('Email already registered');
+  });
+
+  it('maps a concurrent username uniqueness conflict to a client conflict', async () => {
+    findUserByEmail.mockResolvedValue(null);
+    createUser.mockRejectedValue(Object.assign(new Error('duplicate username'), {
+      code: '23505',
+      constraint: 'users_username_key',
+    }));
+
+    await expect(registerUser({
+      username: 'existinguser',
+      email: 'new@example.com',
+      password: 'password123',
+    })).rejects.toThrow('Username already registered');
+  });
+
   it('rotates refresh credentials in one transaction and records replacement', async () => {
     findRefreshTokenForUpdate.mockResolvedValue({
       id: 8,

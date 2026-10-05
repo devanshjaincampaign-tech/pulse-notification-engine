@@ -3,6 +3,7 @@ Instead of "wait for many queries to pile up, then hit the database once," it's 
 */
 
 import pg from 'pg';
+import { readFileSync } from 'node:fs';
 
 /*The pg package doesn't export things the "clean" ESM way you might expect (import { Pool } from 'pg' directly) — it's an older package written primarily for CommonJS, so when used from ESM you import the whole package as one object (pg), then pull out the specific piece you need from it (Pool) using object destructuring. const { Pool } = pg just means "take the Pool property out of the pg object and give me a variable called Pool pointing to it directly." Without this, you'd have to write pg.Pool everywhere instead of just Pool. */
 import {env} from './env.js';
@@ -15,9 +16,15 @@ export const pool=new Pool({
     database: env.db.name,
     host: env.db.host,
     port: env.db.port,
-    max: 25,
+    max: env.db.poolMax,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
+    ssl: env.db.ssl
+        ? {
+            rejectUnauthorized: env.db.sslRejectUnauthorized,
+            ...(env.db.sslCaFile ? { ca: readFileSync(env.db.sslCaFile, 'utf8') } : {}),
+        }
+        : false,
 });
 
 pool.on('error',(err)=>{

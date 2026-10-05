@@ -24,9 +24,11 @@ export function createOutboxWorker({
 } = {}) {
   let timer;
   let stopped = false;
+  let started = false;
   let running = false;
   let inFlight = Promise.resolve();
   let nextStatsAt = 0;
+  let lastSuccessfulPollAt = null;
 
   async function processBatch() {
     if (stopped || running) return;
@@ -44,6 +46,7 @@ export function createOutboxWorker({
         }
       }
       const events = await claim({ workerId, limit: batchSize, leaseMs });
+      lastSuccessfulPollAt = Date.now();
       for (const storedEvent of events) {
         const processingStartedAt = Date.now();
         const event = {
@@ -92,6 +95,7 @@ export function createOutboxWorker({
   return {
     start() {
       stopped = false;
+      started = true;
       const poll = () => {
         inFlight = processBatch().catch((error) => {
           logger.error({ error }, 'Outbox polling failed');
@@ -104,11 +108,20 @@ export function createOutboxWorker({
     },
     async stop() {
       stopped = true;
+      started = false;
       if (timer) clearInterval(timer);
       while (running) await delay(10);
       await inFlight;
     },
     processBatch,
+    getHealth() {
+      return {
+        started: started && !stopped,
+        lastSuccessfulPollAt,
+        pollIntervalMs,
+        leaseMs,
+      };
+    },
     workerId,
   };
 }

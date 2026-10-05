@@ -5,6 +5,11 @@ export const listNotificationsQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
+export const cursorNotificationsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  cursor: z.string().min(1).max(512).optional(),
+});
+
 export const notificationIdParamSchema = z.object({
   id: z.coerce.number().int().positive(),
 });
