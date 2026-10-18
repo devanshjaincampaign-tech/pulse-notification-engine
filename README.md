@@ -252,7 +252,7 @@ lost event will eventually be replayed.
 
 | Technology | Role |
 |---|---|
-| Node.js 20.13+ | Runtime and container base |
+| Node.js 20.19+ | Runtime and test tooling |
 | Express 5 | HTTP API and middleware pipeline |
 | PostgreSQL 16 | Users, refresh tokens, notifications, preferences, and migrations |
 | Redis 7 | Pub/Sub delivery fan-out and shared authentication rate limits |
@@ -349,7 +349,7 @@ pulse-notification-system/
 ### Prerequisites
 
 - Docker Desktop with Docker Compose
-- Node.js 20.13 or newer
+- Node.js 20.19 or newer
 - npm
 - Git
 
