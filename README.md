@@ -2,9 +2,9 @@
 
 ![Tests](https://github.com/devanshjaincampaign-tech/pulse-notification-engine/actions/workflows/test.yml/badge.svg)
 
-Pulse is a production-oriented, real-time notification backend built with
-Node.js. It combines a REST API, PostgreSQL persistence and a durable event
-outbox, Redis Pub/Sub, and authenticated Socket.IO connections.
+Pulse is a real-time notification backend that demonstrates production-oriented
+patterns with Node.js, PostgreSQL persistence and a durable event outbox,
+Redis Pub/Sub, and authenticated Socket.IO connections.
 
 The notification path uses a PostgreSQL-backed durable event outbox. Redis
 remains the real-time delivery fan-out layer, while PostgreSQL provides the
@@ -31,11 +31,43 @@ Access tokens stay in page memory and are cleared when the tab is refreshed.
 The demo creates real local database records. Email preferences are opt-in;
 enable them only when you intentionally configured SMTP.
 
+## Demo screenshots
+
+The screenshots below show the responsive demo interface on laptop and phone
+layouts, plus the architecture explainer. They were captured from a local
+visual preview; service status badges use preview fixtures and do not indicate
+that the backend services were running during capture.
+
+### Laptop layout
+
+![Pulse demo displayed at a laptop viewport, with the system status card, notification pipeline, and interactive workspace.](./docs/screenshots/pulse-demo-laptop.png)
+
+The laptop view places the system pulse and five-stage pipeline above the
+playground. The workspace then groups identity, event production, notification
+feed, socket activity, preferences, and process-local metrics into panels.
+
+### Phone layout
+
+![Pulse demo displayed at a phone viewport, with content stacked into a single-column layout.](./docs/screenshots/pulse-demo-phone.png)
+
+On narrow screens, the intro and workspace panels stack vertically, controls
+remain touch-friendly, and the pipeline can be swiped horizontally rather than
+forcing the whole page to overflow.
+
+### Architecture explainer
+
+![Pulse demo architecture section explaining the durable outbox, Redis fan-out, and delivery guarantees.](./docs/screenshots/pulse-demo-architecture.png)
+
+The explainer connects the visible demo actions to the backend concepts:
+session-aware identity, durable event processing, Redis fan-out, and
+best-effort live delivery backed by a persistent inbox.
+
 ## Table of contents
 
 - [What Pulse does](#what-pulse-does)
 - [Architecture](#architecture)
 - [Interactive local demo](#interactive-local-demo)
+- [Demo screenshots](#demo-screenshots)
 - [Request and notification flows](#request-and-notification-flows)
 - [Implemented capabilities](#implemented-capabilities)
 - [Technology stack](#technology-stack)
@@ -248,7 +280,7 @@ pulse-notification-system/
 ├── .env.test.example                    # Safe template for local test configuration
 ├── .github/
 │   └── workflows/
-│       └── test.yml                     # PostgreSQL, Redis, and npm test CI job
+│       └── test.yml                     # PostgreSQL/Redis tests and image build
 ├── Dockerfile                            # Non-root production image
 ├── docker-compose.yml                    # Two app instances plus databases/Redis
 ├── openapi.json                          # OpenAPI 3.1 HTTP contract
@@ -259,9 +291,11 @@ pulse-notification-system/
 │   ├── production-runbook.md              # Deploy, migrate, recover, and operate
 │   ├── sql/                               # Runtime and outbox operator grants
 │   └── scripts/                           # PostgreSQL backup/restore, K8s rollback
+├── docs/
+│   └── screenshots/                       # README demo screenshots (laptop and phone)
 ├── scripts/
 │   ├── load-test.js                       # Guarded, bounded HTTP load baseline
-│   └── multi-instance-smoke.js            # Redis cross-instance delivery check
+│   └── multi-instance-smoke.js            # Two-instance notification end-to-end check
 ├── vitest.config.js                     # Node test configuration
 ├── demo/
 │   ├── index.html                       # Local interactive backend demo
@@ -339,27 +373,35 @@ Copy-Item .env.example .env
 Change `JWT_SECRET`, database credentials, and `CORS_ORIGIN` before using the
 service outside local development. Never commit `.env`.
 
-### 2. Start dependencies and application instances
+### 2. Start the database and Redis
 
 ```bash
-docker compose up --build -d
+docker compose up -d postgres redis
 ```
 
-This starts:
+The development stack uses:
 
 | Service | Host port | Purpose |
 |---|---:|---|
-| `app` | 3000 | First API and Socket.IO instance |
-| `app2` | 3001 | Second instance for fan-out testing |
 | `postgres` | 5432 | Development database |
-| `postgres_test` | 5433 | Isolated test database |
 | `redis` | 6379 | Pub/Sub and rate-limit store |
 
-Apply development migrations:
+Apply the schema migrations before starting the API. The one-off Compose run
+builds the app image if it is not already present and does not start the API
+service:
 
 ```bash
-docker compose exec app npm run migrate
+docker compose run --build --rm app npm run migrate
 ```
+
+### 3. Start the API instances
+
+```bash
+docker compose up --build -d app app2
+```
+
+This starts the first API and Socket.IO instance on port `3000` and the second
+instance on port `3001`, useful for the cross-instance demo.
 
 Check the API:
 
@@ -367,18 +409,18 @@ Check the API:
 curl http://localhost:3000/health
 ```
 
-Open the interactive demo at `http://localhost:3000/demo`.
-
-`/ready` checks both the database and Redis; `/metrics` serves Prometheus
-metrics. Keep `/metrics` private to your monitoring network in production.
-
 Expected response:
 
 ```json
 {"status":"ok"}
 ```
 
-### 3. Stop local services
+Open the interactive demo at `http://localhost:3000/demo`.
+
+`/ready` checks both the database and Redis; `/metrics` serves Prometheus
+metrics. Keep `/metrics` private to your monitoring network in production.
+
+### 4. Stop local services
 
 ```bash
 docker compose down
@@ -679,29 +721,50 @@ Important indexes include the notification feed index on
 
 ### Run tests locally
 
-Start the test dependencies:
+Create the development and isolated test environment files once:
 
 ```bash
+cp .env.example .env
 cp .env.test.example .env.test
-docker compose up -d postgres_test redis
 ```
 
-On Windows PowerShell, use `Copy-Item .env.test.example .env.test`. Keep the
-test database credentials aligned with `.env`, which Compose uses to create
-the `postgres_test` service. The test migration runner requires the database
-name to end in `_test` and refuses to migrate another database.
+On Windows PowerShell:
 
-Then run:
+```powershell
+Copy-Item .env.example .env
+Copy-Item .env.test.example .env.test
+```
+
+Start only the isolated test PostgreSQL database and Redis service, then run
+the complete test command:
 
 ```bash
 npm ci
+npm run test:services:up
 npm test
+npm run test:services:down
 ```
 
-`npm test` applies test migrations and runs Vitest. The test suite requires a
-reachable PostgreSQL instance on `localhost:5433` and Redis on
-`localhost:6379`; without those services, migration startup fails before
-Vitest begins.
+`npm run test:services:up` waits for both dependencies to pass their health
+checks. `.env.test` connects to PostgreSQL on `localhost:5433` and Redis on
+`localhost:6379`. Keep the test database credentials aligned with `.env`,
+which Compose uses to create the test service. Both the migration command and
+end-to-end runner refuse to run unless `DB_NAME` ends in `_test`; do not point
+them at a development or production database.
+
+`npm test` applies migrations, runs all Vitest unit and repository integration
+tests, then starts two temporary API processes on available local ports. The
+end-to-end test registers isolated test users, authenticates a recipient
+socket on one instance, creates an event through the other, and verifies live
+Socket.IO delivery, the persisted notification, and the published outbox row.
+It removes its generated user and outbox records afterward. Use the
+`test:unit` npm script for migrations and Vitest only, or `npm run test:e2e` to
+run the two-instance check independently.
+
+If a test command fails, inspect the dependency state with
+`docker compose ps postgres_test redis` and the service logs with
+`docker compose logs postgres_test redis`. The compose `--wait` option requires
+a recent Docker Compose v2 release.
 
 Useful scripts:
 
@@ -711,7 +774,11 @@ Useful scripts:
 | `npm run dev` | Start with Node's built-in file watcher |
 | `npm run migrate` | Apply development migrations |
 | `npm run migrate:test` | Apply test migrations |
-| `npm test` | Migrate the test database and run Vitest |
+| `npm run test:services:up` | Start and wait for isolated test PostgreSQL and Redis |
+| `npm run test:services:down` | Stop only the test PostgreSQL and Redis services |
+| `npm run test:unit` | Apply test migrations and run Vitest |
+| `npm run test:e2e` | Apply test migrations and run the two-instance end-to-end test |
+| `npm test` | Run Vitest and the complete two-instance end-to-end test |
 
 ### What is tested
 
@@ -725,8 +792,9 @@ Useful scripts:
 - outbox retry/dead-letter operations and CLI argument guards
 - OpenAPI routes and cursor pagination contract
 
-GitHub Actions runs the test job on pushes and pull requests to `main` with
-fresh PostgreSQL and Redis service containers.
+GitHub Actions runs the same test command on pushes and pull requests to
+`main`, using fresh PostgreSQL and Redis service containers. It also builds
+the production Docker image after the tests pass.
 
 The machine-readable [OpenAPI 3.1 contract](./openapi.json) documents API
 paths, authentication, requests, and cursor pagination. A contract test checks
@@ -734,17 +802,22 @@ that the route surface and pagination shape stay represented in that file.
 
 ### Repeatable performance and multi-instance checks
 
-Start both API instances and dependencies, then run:
+Run the isolated test dependencies, then apply test migrations and run the
+two-instance end-to-end check:
 
 ```bash
-npm run test:multi-instance
+npm run test:services:up
+npm run test:e2e
+npm run test:services:down
 ```
 
-The smoke test registers unique test accounts, connects to instance 1, emits a
-`USER_FOLLOWED` event through instance 2, and requires the socket on instance 1
-to receive it. It defaults to localhost and refuses remote hosts unless
-`PULSE_SMOKE_ALLOW_REMOTE=true` is explicitly set. Run it against a disposable
-database because it creates test users and notifications.
+The two-instance test starts and stops its own API processes, authenticates
+unique test accounts, connects the recipient to one instance, and creates a
+`USER_FOLLOWED` event through the other. It verifies delivery, persistence,
+and outbox completion, and removes its generated records. Locally it loads
+database configuration from `.env.test`; CI injects equivalent test-only
+environment variables. Both configurations require a database name ending in
+`_test`.
 
 For a bounded GET-only HTTP baseline:
 
@@ -847,10 +920,9 @@ protection before using them for authentication.
 
 ## Remaining work
 
-Core P0 reliability, P1 security/operations, and the planned P2 feature work
-are implemented in the repository. Before a real production launch, operators
-still need to supply external infrastructure and validate it in their own
-environment:
+The repository includes the documented API, worker, security, and recovery
+features, but those assets are not a substitute for validating a deployment.
+Before using this system in production, operators still need to:
 
 - Replace example images, service endpoints, CORS origin, and SMTP settings in
   the deployment configuration; provision external secrets and least-privilege
@@ -878,8 +950,9 @@ environment:
 - There is no OpenTelemetry exporter or distributed tracing backend.
 - SMTP email is optional and requires external provider credentials and
   deliverability configuration.
-- Load and cross-instance scripts are opt-in local checks, not part of CI;
-  database integration tests also require PostgreSQL and Redis services.
+- The GET-only load baseline remains an opt-in local check; the two-instance
+  end-to-end test and PostgreSQL repository tests run in CI with PostgreSQL and
+  Redis services.
 - Kubernetes manifests, sample alert rules, and operational scripts are
   templates and have not been validated against a live production environment.
 - Published outbox rows do not yet have an automatic archival or retention
@@ -887,7 +960,7 @@ environment:
 
 ## License
 
-ISC
+This project is licensed under the ISC License. See [LICENSE](./LICENSE).
 
 ## Contributing
 

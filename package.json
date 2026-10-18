@@ -7,9 +7,13 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "outbox": "node src/cli/outbox.js",
-    "test": "node src/db/migrate.js test && vitest run",
+    "test": "npm run test:unit && npm run test:multi-instance",
+    "test:unit": "node src/db/migrate.js test && vitest run",
+    "test:e2e": "node src/db/migrate.js test && node scripts/multi-instance-smoke.js",
     "migrate:test": "node src/db/migrate.js test",
     "test:multi-instance": "node scripts/multi-instance-smoke.js",
+    "test:services:up": "docker compose up -d --wait postgres_test redis",
+    "test:services:down": "docker compose stop postgres_test redis",
     "test:load": "node scripts/load-test.js"
   },
   "repository": {

@@ -6,9 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       postgres:
@@ -39,13 +43,16 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 20.13
+          cache: npm
 
       - run: npm ci
 
-      - name: Run tests
+      - name: Run unit, database, and two-instance end-to-end tests
         run: npm test
         env:
+          CI: true
+          NODE_ENV: test
           DB_USER: postgres
           DB_PASSWORD: testpassword
           DB_NAME: pulse_notifications_test
@@ -55,3 +62,7 @@ jobs:
           REDIS_PORT: 6379
           JWT_SECRET: ci_test_secret
           PORT: 3000
+          OUTBOX_POLL_INTERVAL_MS: 100
+
+      - name: Build production container image
+        run: docker build --tag pulse-notification-engine:test .
