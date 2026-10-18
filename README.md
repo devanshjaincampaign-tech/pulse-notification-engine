@@ -10,9 +10,6 @@ The notification path uses a PostgreSQL-backed durable event outbox. Redis
 remains the real-time delivery fan-out layer, while PostgreSQL provides the
 recoverable source of truth for events waiting to be processed.
 
-> **Try it locally:** Start the application with Docker Compose and open
-> [`http://localhost:3000/demo`](http://localhost:3000/demo).
-
 ### Interactive local demo
 
 With the API running in development mode, open the demo page. It is served
