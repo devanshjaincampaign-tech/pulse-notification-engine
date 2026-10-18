@@ -14,8 +14,11 @@ import { pool } from './config/database.js';
 import { redisClient, redisSubscriber } from './config/redis.js';
 import { observeHttpRequest, renderMetrics } from './config/metrics.js';
 import { timingSafeEqual } from 'crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const app = express();
+const projectRoot = path.dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
 
 function withTimeout(operation, timeoutMs = 2000) {
   const pending = Promise.resolve().then(operation);
@@ -35,7 +38,27 @@ function withTimeout(operation, timeoutMs = 2000) {
 }
 
 app.use(requestIdMiddleware);
-app.use(helmet());
+app.use(helmet(env.nodeEnv === 'production' ? undefined : {
+  contentSecurityPolicy: {
+    directives: {
+      connectSrc: [
+        "'self'",
+        'http://localhost:*',
+        'https://localhost:*',
+        'ws://localhost:*',
+        'wss://localhost:*',
+        'http://127.0.0.1:*',
+        'https://127.0.0.1:*',
+        'ws://127.0.0.1:*',
+        'wss://127.0.0.1:*',
+        'http://[::1]:*',
+        'https://[::1]:*',
+        'ws://[::1]:*',
+        'wss://[::1]:*',
+      ],
+    },
+  },
+}));
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10kb' }));
 
@@ -88,6 +111,18 @@ app.get('/metrics', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.status(200).send(renderMetrics());
 });
+
+if (env.nodeEnv !== 'production') {
+  const demoDirectory = path.join(projectRoot, 'demo');
+  app.use('/demo/assets', express.static(path.join(demoDirectory, 'assets'), {
+    dotfiles: 'deny',
+    index: false,
+    maxAge: 0,
+  }));
+  app.get('/demo', (req, res) => {
+    res.sendFile(path.join(demoDirectory, 'index.html'));
+  });
+}
 
 app.use('/api/auth', authRoutes);
 app.use('/api/notifications', notificationRoutes);

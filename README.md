@@ -10,13 +10,32 @@ The notification path uses a PostgreSQL-backed durable event outbox. Redis
 remains the real-time delivery fan-out layer, while PostgreSQL provides the
 recoverable source of truth for events waiting to be processed.
 
-> **Demo / screenshots:** Add an architecture screenshot, API example, or
-> short delivery-flow recording here when available.
+> **Try it locally:** Start the application with Docker Compose and open
+> [`http://localhost:3000/demo`](http://localhost:3000/demo).
+
+### Interactive local demo
+
+With the API running in development mode, open the demo page. It is served
+by the API itself, uses no separate frontend build or external runtime
+services, and is disabled when `NODE_ENV=production`.
+
+1. Create or sign in to a recipient and an actor account.
+2. Keep the recipient socket on the first instance and send a `USER_FOLLOWED`
+   or `POST_LIKED` event through the second instance to demonstrate Redis
+   cross-instance fan-out.
+3. Watch the socket activity log, unread sync, and persisted inbox. Try marking
+   an item read, changing per-event delivery preferences, rotating a refresh
+   token, revoking a session, and refreshing this process's Prometheus signals.
+
+Access tokens stay in page memory and are cleared when the tab is refreshed.
+The demo creates real local database records. Email preferences are opt-in;
+enable them only when you intentionally configured SMTP.
 
 ## Table of contents
 
 - [What Pulse does](#what-pulse-does)
 - [Architecture](#architecture)
+- [Interactive local demo](#interactive-local-demo)
 - [Request and notification flows](#request-and-notification-flows)
 - [Implemented capabilities](#implemented-capabilities)
 - [Technology stack](#technology-stack)
@@ -244,6 +263,9 @@ pulse-notification-system/
 │   ├── load-test.js                       # Guarded, bounded HTTP load baseline
 │   └── multi-instance-smoke.js            # Redis cross-instance delivery check
 ├── vitest.config.js                     # Node test configuration
+├── demo/
+│   ├── index.html                       # Local interactive backend demo
+│   └── assets/                          # Responsive demo client styles and behavior
 ├── src/
 │   ├── app.js                           # Express app, middleware, and route mounting
 │   ├── server.js                        # Startup, dependencies, WebSocket, shutdown
@@ -344,6 +366,8 @@ Check the API:
 ```bash
 curl http://localhost:3000/health
 ```
+
+Open the interactive demo at `http://localhost:3000/demo`.
 
 `/ready` checks both the database and Redis; `/metrics` serves Prometheus
 metrics. Keep `/metrics` private to your monitoring network in production.

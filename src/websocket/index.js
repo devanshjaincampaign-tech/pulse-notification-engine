@@ -7,6 +7,7 @@ import { getUnreadNotificationsForUser } from '../modules/notifications/notifica
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
 import { addGauge, increment, observeUnreadSync } from '../config/metrics.js';
+import { corsOptions } from '../config/cors.js';
 
 const MAX_PUBSUB_BYTES = 1024 * 1024;
 const connectionsByIp = new Map();
@@ -64,6 +65,10 @@ function consumeHandshake(ip, now = Date.now()) {
 export async function initializeWebSocket(httpServer) {
   const io = new Server(httpServer, {
     maxHttpBufferSize: env.websocket.maxPayloadBytes,
+    cors: {
+      origin: corsOptions.origin,
+      credentials: corsOptions.credentials,
+    },
     allowRequest: (request, callback) => {
       const ip = env.websocket.trustProxy && request.headers['x-forwarded-for']
         ? request.headers['x-forwarded-for'].split(',')[0].trim()
